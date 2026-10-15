@@ -4,7 +4,7 @@ build-backend = "chimerax.bundle_builder.cx_pep517"
 
 [project]
 name = "ChimeraX-NGFF"
-version = "0.2.0"
+version = "0.2.1"
 description = "Open OME-Zarr (OME-NGFF) images in ChimeraX, using only ChimeraX's own numpy and imagecodecs"
 license = { text = "MIT" }
 authors = [{ name = "bscott711" }]

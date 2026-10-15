@@ -12,10 +12,10 @@ ChimeraX's own packages. It needs ChimeraX 1.6 or later and is tested on Chimera
 From a wheel (GitHub release or `dist/` after a build):
 
 ```
-chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.2.0-py3-none-any.whl"
+chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.2.1-py3-none-any.whl"
 ```
 
-or type `toolshed install /path/to/chimerax_ngff-0.2.0-py3-none-any.whl` in the ChimeraX
+or type `toolshed install /path/to/chimerax_ngff-0.2.1-py3-none-any.whl` in the ChimeraX
 command line. Add `user false` to install for every user of a shared ChimeraX (needs
 write access to its site-packages). Once the bundle is on the ChimeraX Toolshed,
 `toolshed install ChimeraX-NGFF` works too.
