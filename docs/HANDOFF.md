@@ -108,3 +108,67 @@ window 0-300.
   (branch `feat/open-in-viewer`); production serves from `~/projects/opym-dashboard`.
 - `bioimaging/backfill/viewer_export.py` writes a `.cxc` that opens the DSR TIFFs; Phase B of
   the plan points it at the zarr instead.
+
+## v0.2: time points that appear instantly (2026-10-14, branch feat/instant-frames)
+
+Problem: at full resolution each *new* time point took 2 to 5 s to appear (revisits were
+instant). Store used for all numbers: Cell_001_002 (150 t, 2 ch, 419 x 1458 x 722 uint16,
+882 MB per channel, 1.76 GB per time point), real GPU = RTX PRO 6000 on the DCV desktop
+(`NGFF_GUI_GL=dcv`), private HOME, `tests/chimerax/bench.py`, 12 sequential steps at
+`volume step 1`, one `glFinish`ed frame per step.
+
+Where the 2 s went (v0.1, per new frame): colouring 419 planes per channel on the CPU
+(ChimeraX's `colormap_on_gpu` and `blend_on_gpu` default to False) 1.0 s; read 0.2 s; the
+blended 1.76 GB RGBA texture upload 0.3 s; the Volume Viewer histogram
+(`MatrixValueStatistics`, single-threaded C++ on the UI thread, 1.5 s per channel) when the
+panel is open; the staging copy of the planes ~0.2 s.
+
+| run | median | p95 |
+|---|---|---|
+| v0.1, step 1 right after open | 2.03 s | 2.10 s (max 4.2) |
+| v0.2, step 1 right after open | 0.42 s | 0.50 s |
+| v0.2, 3 s after open | 0.20 s | 0.43 s |
+| v0.2, 15 s after open (24-frame window pre-drawn) | 0.026 s | 0.035 s |
+| v0.2, random scrub at full res (outside the window) | 0.40 s | 0.46 s |
+| v0.2, step 4 (opening resolution), 60 steps | 0.045 s | 0.059 s |
+
+Beyond the pre-drawn window the limit is physics: 1.7 GB per step read from GPFS at 3 to
+4 GB/s plus 0.15 s upload. Software GL (Mesa llvmpipe, `run_gui.sh` default) gave the same
+CPU-side breakdown and is what to use when a GPU is not wanted.
+
+What v0.2 does (see README "Fast time points"): MIP + GPU colormap + linear ramp defaults
+(`src/grid.py rendering_options`, set through `GridData.initial_rendering_options`, so no
+cost per volume); `src/prefetch.py` (background reads into ChimeraX's data cache under the
+exact key `Volume.matrix()` looks up, own data cache with farthest-first eviction, idle
+window of 24 time points that grows to the budget once the time point starts moving, draw
+ahead of textures when idle, bounded video memory, histogram from `src/stats.py`);
+`src/render.py` (the prefetched block goes to OpenGL without the plane-by-plane copy);
+`src/schedule.py` (pure ranking, portable tests).
+
+Things found the hard way:
+
+- **Stale projection mode.** ChimeraX fixes an image's projection (`_p_mode`) when the image
+  model is created, from the single plane it shows while opening; our `show_full_region`
+  widens it afterwards, so v0.1 volumes reported `2d-z`. `projection_mode "3d"` is set at
+  open now.
+- **VirtualGL does not work with ChimeraX** (`glGetFramebufferAttachmentParameteriv` and
+  `glDrawBuffer(GL_BACK)` fail on the default framebuffer), so GPU timings need the DCV
+  desktop; `run_gui.sh` has `software` (default), `vgl` (kept, broken) and `dcv`.
+- **More reads in flight made drawing slower**: 24 prefetch jobs of Python code took the GIL
+  from the main thread (frame 0.4 s instead of 0.025 s). In flight is 4.
+- **Textures belong to a GL context**: `render.make_current()` before building one outside a
+  draw, or the first draw fails with `glBindTexture ... invalid operation` and ChimeraX stops
+  redrawing.
+- **Missing chunks are normal** (zarr writers skip all-fill chunks); only a block with no
+  chunks at all (a time point not written yet) is left uncached and looked at again.
+- numpy's `bincount` holds the GIL, so the histogram is a strided sample (exact min and max;
+  counts within 0.3 % L1 of ChimeraX's) for blocks over 32 Mvoxels.
+- Hidden volumes release their data (`_keep_displayed_data`), but ChimeraX's slider keeps a
+  rendering (texture) for every visited time point: 69 GB of video memory in a long session.
+  v0.2 closes the images outside the window (`close_image`, then `_style_when_shown = "image"`
+  so they come back when shown).
+
+Tests: portable 155 pass (zarr 3) / 132 pass 38 skip (zarr 2), `tests/chimerax/smoke.py`
+24/24 and `prefetch_check.py` 13/13 against the dev install in a private HOME.
+Dev loop: `HOME=<private> chimerax --nogui --exit --cmd "devel install <repo> user true"`
+(delete `build/`, `*.egg-info`, `dist/` after a version change, or the old wheel name sticks).

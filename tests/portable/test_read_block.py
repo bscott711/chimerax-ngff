@@ -96,3 +96,30 @@ def test_value_type_conversion(tmp_path, dtype, out):
     m = im.read_block(0, 0, 0, (0, 0, 0), (5, 4, 3), (1, 1, 1))
     assert m.dtype == np.dtype(out) and m.dtype.isnative
     np.testing.assert_array_equal(m, data.astype(out))
+
+
+def test_background_read_matches_and_leaves_the_chunk_cache_alone(tmp_path):
+    from cxngff import store
+
+    root, data, levels = store_419(tmp_path, ny=40, nx=30)
+    im = open_image(root)
+    size = im.level_size(0)
+    fg = im.read_block(0, 0, 0, (0, 0, 0), size, (1, 1, 1))
+    store.CHUNK_CACHE.clear()
+    report = {}
+    bg = im.read_block(0, 0, 0, (0, 0, 0), size, (1, 1, 1), background=True, report=report)
+    np.testing.assert_array_equal(bg, fg)
+    assert len(store.CHUNK_CACHE) == 0
+    assert report["chunks"] > 1 and report["missing"] == 0
+
+
+def test_report_counts_chunks_missing_from_the_store(tmp_path):
+    root, data, levels = store_419(tmp_path, ny=40, nx=30)
+    # Writers skip chunks that are all fill: remove one and another stays.
+    os.remove(os.path.join(root, "0", "0", "0", "0", "0", "0"))
+    im = open_image(root)
+    report = {}
+    m = im.read_block(0, 0, 0, (0, 0, 0), im.level_size(0), (1, 1, 1), background=True,
+                      report=report)
+    assert report["missing"] == 1 and report["chunks"] > 1
+    assert (m[:64, :16, :16] == 0).all()  # the missing chunk reads as fill

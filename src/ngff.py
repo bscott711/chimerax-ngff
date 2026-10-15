@@ -184,8 +184,12 @@ class Image:
 
     # -- reading ------------------------------------------------------------
 
-    def read_block(self, k, t, c, ijk_origin, ijk_size, ijk_step):
+    def read_block(self, k, t, c, ijk_origin, ijk_size, ijk_step, background=False,
+                   report=None):
         """Region of level k at time t, channel c, as a (nk, nj, ni) array of value_type.
+
+        background=True reads on the prefetch pool without touching the chunk cache. A dict
+        passed as `report` is filled in as ZarrArray.read describes.
 
         ijk are ChimeraX (x, y, z) indices. Each axis returns 1 + (size - 1) // step values.
         Indices past the end of the array are padded with the fill value: ChimeraX asks
@@ -218,7 +222,7 @@ class Image:
                 o, st = int(o), int(st)
                 sel[ai] = (o, o + (nv - 1) * st + 1, st)
         view = out[:valid[2], :valid[1], :valid[0]]
-        arr.read(sel, out=self._array_order_view(view))
+        arr.read(sel, out=self._array_order_view(view), background=background, report=report)
         return out
 
     def _array_order_view(self, view):
