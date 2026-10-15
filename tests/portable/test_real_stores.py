@@ -123,4 +123,5 @@ def test_regions_and_padding(real):
     assert padded.shape == ask[::-1]
     lx, ly, lz = im.level_size(1)
     np.testing.assert_array_equal(padded[:lz, :ly, :lx], full)
-    assert (padded[lz:] == 0).all() and (padded[:, ly:] == 0).all() and (padded[:, :, lx:] == 0).all()
+    assert (padded[lz:] == 0).all() and (padded[:, ly:] == 0).all()
+    assert (padded[:, :, lx:] == 0).all()
