@@ -12,10 +12,10 @@ ChimeraX's own packages. It needs ChimeraX 1.6 or later and is tested on Chimera
 From a wheel (GitHub release or `dist/` after a build):
 
 ```
-chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.3.1-py3-none-any.whl"
+chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.4.0-py3-none-any.whl"
 ```
 
-or type `toolshed install /path/to/chimerax_ngff-0.3.1-py3-none-any.whl` in the ChimeraX
+or type `toolshed install /path/to/chimerax_ngff-0.4.0-py3-none-any.whl` in the ChimeraX
 command line. Add `user false` to install for every user of a shared ChimeraX (needs
 write access to its site-packages). Once the bundle is on the ChimeraX Toolshed,
 `toolshed install ChimeraX-NGFF` works too.
@@ -98,6 +98,15 @@ ChimeraX reads, colours and uploads a time point the first time it is shown. For
   stored data is untouched. On Cell_001_002 the 8-bit and 16-bit renders of one time point
   differ by at most 2 of 255 in any pixel.
 
+- **Home view** (the default; `open x.zarr homeview false` or `CHIMERAX_NGFF_HOME_VIEW=0` opts out). ChimeraX starts
+  by looking straight down z. Our stores have the coverslip at the high-z end, so the first view
+  is a three-quarter view with the coverslip slab at the bottom of the screen and the cell sitting
+  on it: the same picture napari's "Open in napari" starts with (argus-desktop `napari_open.py`).
+  It is applied only when the store is the first thing opened in the session, and `view orient`
+  returns to the look-down-z view. napari draws the data mirrored left-right relative to ChimeraX's
+  right-handed frame; a maximum-intensity projection is the same seen from either end, so the camera
+  sits on the far side (a true rotation) and the pictures match. See `src/homeview.py`.
+
 Measured on a 150-time-point, 2-channel store (419 x 1458 x 722 voxels, 1.76 GB per time
 point) on an RTX PRO 6000, one new time point per step, full resolution:
 v0.1 2.1 s; v0.2 0.04 s within the drawn-ahead window, 0.2 to 0.4 s beyond it (limited by
@@ -113,6 +122,7 @@ Settings (environment variables):
 | `CHIMERAX_NGFF_PROJECTION` | `mip` (default) or `blend` (ChimeraX's blended image, blended on the GPU) |
 | `CHIMERAX_NGFF_GPU_COLORMAP` | `1` (default) or `0`: colour on the CPU, as ChimeraX does by default |
 | `CHIMERAX_NGFF_DISPLAY_BITS` | `8` (default): unsigned 16-bit data is shown as 8-bit; `16`: values as stored. `open x.zarr bits 16` does it for one open |
+| `CHIMERAX_NGFF_HOME_VIEW` | `1` (default): start at the three-quarter home view; `0`: ChimeraX's own look down z. `open x.zarr homeview false` does it for one open |
 | `CHIMERAX_NGFF_PREFETCH_GB` | memory for time points read ahead; default 75 % of the memory available (re-read as you step, so it follows other programs), never leaving less than 48 GB available; `0` turns prefetch off |
 | `CHIMERAX_NGFF_PREFETCH_THREADS` | decode threads for prefetch, default 32 |
 | `CHIMERAX_NGFF_GPU_GB` | cap on video memory for textures of time points not shown; default: no cap, whatever is free except 24 GB left for other programs; `0` turns drawing ahead and the bound off |
