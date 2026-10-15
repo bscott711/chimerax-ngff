@@ -71,6 +71,11 @@ if flat:
     check("flat: colors green and magenta", colors == [(0, 1, 0, 1), (1, 0, 1, 1)], str(colors))
     check("flat: first frame shown in image style",
           all(s.maps[0].display and s.maps[0].image_shown for s in ms))
+    for s in ms:
+        lev = [x for x, _ in s.maps[0].image_levels]
+        check(f"flat: {s.maps[0].name} image levels increase", lev == sorted(lev)
+              and lev[-1] > lev[0] and s.maps[0].image_levels[0][1] == 0,
+              str(s.maps[0].image_levels))
     check("flat: shown at a subsample step (multiscale)", tuple(v0.region[2]) == (4, 4, 4),
           str(v0.region))
     # Step to frame 10, then read it.

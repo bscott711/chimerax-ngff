@@ -77,6 +77,8 @@ def auto_image_levels(image, k, c):
 
     Computed from time point 0 of level k, read at the power-of-two step that keeps it
     under 16 Mvoxels: 10th and 99th percentile and maximum, at brightness 0, 0.8 and 1.
+    One deviation: constant data (an empty store) is shown dark, where ChimeraX's rule
+    puts its single value at full brightness and draws a solid white block.
     """
     from chimerax.map_data import MatrixValueStatistics
 
@@ -87,6 +89,8 @@ def auto_image_levels(image, k, c):
     m = image.read_block(k, 0, c, (0, 0, 0), size, (step, step, step))
     ms = MatrixValueStatistics([m])
     vlow, vmid, vmax = ms.rank_data_value(0.10), ms.rank_data_value(0.99), ms.maximum
+    if ms.minimum >= vmax:
+        return ((vmax, 0.0), (vmax + 1.0, 1.0))
     if vlow < vmid < vmax:
         return ((vlow, 0.0), (vmid, 0.8), (vmax, 1.0))
     return ((vlow, 0.0), (0.9 * vlow + 0.1 * vmax, 0.8), (vmax, 1.0))

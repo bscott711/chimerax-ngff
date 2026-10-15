@@ -84,7 +84,7 @@ def describe(image, name):
     parts.append(f"{len(image.levels)} level{'s' if len(image.levels) != 1 else ''}")
     frames = f"{image.nt} time point{'s' if image.nt != 1 else ''}"
     if image.nt > 1 and image.time_step is not None and image.time_unit:
-        frames += f" ({image.time_step:g} {image.time_unit} apart)"
+        frames += f" (time step {image.time_step:g} {image.time_unit})"
     parts.append(frames)
     labels = [ch.label for ch in image.channels if ch.label]
     chans = f"{image.nc} channel{'s' if image.nc != 1 else ''}"
