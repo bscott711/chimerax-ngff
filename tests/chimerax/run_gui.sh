@@ -11,6 +11,8 @@
 #   NGFF_GUI_GPU      VirtualGL EGL device for vgl (default egl1: GPU 1, off the decon GPU)
 #   NGFF_GUI_DISPLAY  X display number (default 97)
 #   NGFF_GUI_SIZE     screen size (default 1700x1000x24)
+#   NGFF_GUI_DCV_QUERIES  dcv mode only: DCV_GL_USE_SAMPLE_QUERIES (default 0, what the Argus launchers
+#                     set; 1 brings back the DCV GL bug that breaks shadow maps, a negative control)
 #   ARGUS_CHIMERAX    ChimeraX binary (default: the shared Argus install)
 # Needs the Xvfb and VirtualGL unpacked by naparym-live under ~/opt/naparym-live/current/sysroot.
 set -eu
@@ -20,7 +22,8 @@ gl=${NGFF_GUI_GL:-software}
 work=$(mktemp -d "${TMPDIR:-/tmp}/ngff-gui.XXXXXX")
 gui_home=${NGFF_GUI_HOME:-$work/home}
 mkdir -p "$gui_home"
-trap 'kill ${xvfb:-} 2>/dev/null; rm -rf "$work"' EXIT INT TERM
+# `kill` with no pid (dcv mode starts no Xvfb) fails with 2 and would become the script's exit status.
+trap '[ -z "${xvfb:-}" ] || kill "$xvfb" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
 if [ "$gl" = dcv ]; then
     # The DCV desktop: real NVIDIA GLX. The display number changes when the session is
     # recreated, so read it from the DCV agent.
@@ -44,7 +47,7 @@ fi
 # does per frame except the GPU itself (data reads, colour, blend, texture fill, histogram).
 # NGFF_GUI_GL=vgl: VirtualGL on a GPU; ChimeraX's default framebuffer does not work on it yet.
 if [ "$gl" = dcv ]; then
-    gl_env="PYOPENGL_PLATFORM=glx"
+    gl_env="PYOPENGL_PLATFORM=glx DCV_GL_USE_SAMPLE_QUERIES=${NGFF_GUI_DCV_QUERIES:-0}"
 elif [ "$gl" = vgl ]; then
     gl_env="LD_PRELOAD=$sysroot/usr/lib64/VirtualGL/libvglfaker-nodl.so VGL_DISPLAY=${NGFF_GUI_GPU:-egl1} VGL_EGLLIB=/usr/lib64/libEGL.so.1 VGL_GLLIB=/usr/lib64/libGL.so.1 LD_LIBRARY_PATH=$sysroot/usr/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} PYOPENGL_PLATFORM=egl"
 else

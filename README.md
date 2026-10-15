@@ -157,7 +157,10 @@ NGFF_SMOKE_FLAT=<2-channel store> NGFF_SMOKE_LAYOUT3=<layout-3 store> \
 ```
 
 `tests/chimerax/` also has `prefetch_check.py` (no display), `timing.py`, `render.py`,
-`gui_open.py` and `bench.py` (these need a display). `run_gui.sh` starts ChimeraX on a
+`gui_open.py`, `lighting.py` and `bench.py` (these need a display). `lighting.py` cycles every lighting mode
+(default, simple, soft, full, gentle, flat, shadows, multishadow) with a mesh and the volume shown and fails on any
+GL error; on the DCV desktop `run_gui.sh` sets `DCV_GL_USE_SAMPLE_QUERIES=0` like the Argus launchers (without it
+DCV's GL layer breaks shadow maps; `NGFF_GUI_DCV_QUERIES=1` is the negative control, the script must fail). `run_gui.sh` starts ChimeraX on a
 private Xvfb with Mesa software GL (`NGFF_GUI_GL=software`, measures everything except the
 GPU), on a GPU through VirtualGL (does not work with ChimeraX yet), or on the DCV desktop
 with its NVIDIA GPU (`NGFF_GUI_GL=dcv`, the one to use for timings), always with a private
