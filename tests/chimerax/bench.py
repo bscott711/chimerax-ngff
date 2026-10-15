@@ -17,6 +17,7 @@ import random
 import statistics
 import subprocess
 import sys
+import threading
 import time
 
 from chimerax.core.commands import run
@@ -31,6 +32,7 @@ scenario = os.environ.get("NGFF_BENCH_SCENARIO", "step")
 idle = float(os.environ.get("NGFF_BENCH_IDLE", "0"))
 gpu = os.environ.get("NGFF_BENCH_GPU", "1")
 profile = os.environ.get("NGFF_BENCH_PROFILE") == "1"
+profile_at = int(os.environ.get("NGFF_BENCH_PROFILE_AT", "0"))
 
 
 def _excepthook_report():
@@ -54,6 +56,11 @@ def draw_frame():
     return session.main_view.frame_number - f0
 
 
+def _pf():
+    ps = getattr(session, "ngff_prefetchers", [])
+    return f"{len(ps[0]._inflight)}/{len(ps[0]._todo)}/{ps[0].built}" if ps else "-"
+
+
 def gpu_mb():
     try:
         out = subprocess.run(["nvidia-smi", "-i", gpu, "--query-gpu=memory.used",
@@ -72,13 +79,15 @@ def rss_gb():
 
 
 # Time spent in the stages of a new frame, accumulated by wrapping the functions.
-spent = {"read_block": 0.0, "plane_fetch": 0.0, "color": 0.0, "blend": 0.0, "upload": 0.0}
+spent = dict.fromkeys(("read_block", "plane_fetch", "texdata", "color", "blend", "upload"), 0.0)
 
 
 def timed(owner, name, key):
     orig = getattr(owner, name)
 
     def wrapper(*a, **kw):
+        if threading.current_thread() is not threading.main_thread():
+            return orig(*a, **kw)  # prefetch threads: not time the user waits
         t = time.perf_counter()
         try:
             return orig(*a, **kw)
@@ -90,15 +99,42 @@ def timed(owner, name, key):
 
 from chimerax.graphics import opengl  # noqa: E402
 from chimerax.map import image3d  # noqa: E402
-from chimerax.ngff import ngff  # noqa: E402
+from chimerax.ngff import ngff, render  # noqa: E402
 
+render.install()  # before timing wrappers go on top
+timed(image3d.Texture3dPlanes, "_texture_3d_data", "texdata")
 timed(ngff.Image, "read_block", "read_block")
+if os.environ.get("NGFF_BENCH_TRACE_GL"):
+    _it = opengl.Texture.initialize_texture
+
+    def _init_traced(self, size, *a, **kw):
+        t_ = time.perf_counter()
+        try:
+            return _it(self, size, *a, **kw)
+        finally:
+            report(f"BENCH   initialize_texture dim {self.dimension} size {size} "
+                   f"{time.perf_counter() - t_:.3f} s")
+
+    opengl.Texture.initialize_texture = _init_traced
+if os.environ.get("NGFF_BENCH_TRACE"):
+    _rb = ngff.Image.read_block
+
+    def _traced(self, *a, **kw):
+        if threading.current_thread() is threading.main_thread():
+            report(f"BENCH   main-thread read_block {a}")
+        return _rb(self, *a, **kw)
+
+    ngff.Image.read_block = _traced
 timed(image3d.Image3d, "_matrix_plane", "plane_fetch")  # includes the data read
 timed(image3d.Image3d, "_color_plane", "color")  # CPU colormap of one plane
 timed(image3d.BlendedImage, "_color_plane", "blend")  # CPU colour + blend (includes color)
 timed(opengl.Texture, "reload_texture", "upload")
 
 try:
+    for _level in ("warning", "error", "bug"):
+        _orig = getattr(session.logger, _level)
+        setattr(session.logger, _level, lambda m, *a, _o=_orig, _l=_level, **k: (
+            report(f"BENCH log {_l}: {str(m)[:600]}"), _o(m, *a, **k))[1])
     render = session.main_view.render
     render.make_current()
     from OpenGL import GL  # noqa: E402
@@ -135,6 +171,10 @@ try:
             draw_frame()
             time.sleep(0.05)
 
+    for p_ in getattr(session, "ngff_prefetchers", []):
+        report(f"BENCH prefetch {p_.status()}")
+        report(f"BENCH prefetch timings (t, read s, stats s): "
+               f"{[(t, round(r, 2), round(h, 2)) for t, r, h in p_.timings]}")
     player = Play_Series(series, session, rendering_cache_size=nt * len(series))
     if scenario == "scrub":
         rng = random.Random(1)
@@ -149,7 +189,7 @@ try:
         for k in spent:
             spent[k] = 0.0
         prof = None
-        if profile and i < 2:
+        if profile and profile_at <= i < profile_at + 2:
             import cProfile
             prof = cProfile.Profile()
             prof.enable()
@@ -163,14 +203,15 @@ try:
             pstats.Stats(prof, stream=sys.__stdout__).sort_stats("cumulative").print_stats(28)
         walls.append(wall)
         report(f"BENCH frame t={t} wall {wall:.3f} s  read {spent['read_block']:.3f}  "
-               f"fetch {spent['plane_fetch']:.3f}  color {spent['color']:.3f}  "
+               f"texdata {spent['texdata']:.3f}  color {spent['color']:.3f}  "
                f"blend {spent['blend']:.3f}  upload {spent['upload']:.3f}  "
-               f"drawn {drawn}  gpu +{gpu_mb() - base_gpu} MB  rss {rss_gb():.1f} GB")
+               f"drawn {drawn}  pf {_pf()}  gpu +{gpu_mb() - base_gpu} MB  rss {rss_gb():.1f} GB")
 
     s = sorted(walls)
     p95 = s[min(len(s) - 1, int(round(0.95 * (len(s) - 1))))]
     report(f"BENCH summary scenario={scenario} step={step} n={len(walls)} "
-           f"median {statistics.median(walls):.3f} s  p95 {p95:.3f}  min {s[0]:.3f}  max {s[-1]:.3f}")
+           f"median {statistics.median(walls):.3f} s  p95 {p95:.3f}  min {s[0]:.3f}  "
+           f"max {s[-1]:.3f}")
 except Exception:
     _excepthook_report()
     os._exit(1)

@@ -35,6 +35,8 @@ def open_ngff(session, path, file_name, series=None):
     from .store import ZarrError, no_hugepage_stalls
 
     no_hugepage_stalls()
+    from .render import install as install_direct_upload
+    install_direct_upload()
     path = path.rstrip("/") or "/"
     try:
         image = open_image(path, series=series)
@@ -52,6 +54,8 @@ def open_ngff(session, path, file_name, series=None):
         models, _ = open_grids(session, grids, name)
         volumes = [v for m in models for v in m.all_models() if isinstance(v, Volume)]
         show_full_region(volumes)
+    from .prefetch import start
+    start(session, models)
     return models, describe(image, name)
 
 

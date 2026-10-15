@@ -24,6 +24,19 @@ class NGFFGrid(GridData):
     def read_matrix(self, ijk_origin, ijk_size, ijk_step, progress):
         return self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step)
 
+    def read_ahead(self, ijk_origin, ijk_size, ijk_step):
+        """(matrix, any_data) for the prefetcher, read on its own threads.
+
+        any_data is False when none of the chunks the block touches is in the store: the
+        time point has not been written yet (a live acquisition), so the block of fill
+        values must not be cached. Chunks missing among others are normal (all-zero chunks
+        are not written) and give fill values, as they do when ChimeraX reads.
+        """
+        report = {}
+        m = self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step,
+                                  background=True, report=report)
+        return m, report.get("missing", 0) < report.get("chunks", 1)
+
 
 def rendering_options(image, projection="mip", gpu_colormap=True):
     """Initial rendering options for the volumes of an image (GridData.initial_rendering_options).

@@ -137,6 +137,21 @@ _POOL = ThreadPoolExecutor(min(32, os.cpu_count() or 4),
                            thread_name_prefix="chimerax-ngff")
 
 
+def _background_threads():
+    value = os.environ.get("CHIMERAX_NGFF_PREFETCH_THREADS", "").strip()
+    try:
+        n = int(value) if value else 16
+    except ValueError:
+        n = 16
+    return max(1, min(n, os.cpu_count() or 4))
+
+
+# Decoding for prefetch runs apart from the pool above, so a read for the frame on screen
+# never waits behind chunks read ahead.
+_BACKGROUND_POOL = ThreadPoolExecutor(_background_threads(),
+                                      thread_name_prefix="chimerax-ngff-prefetch")
+
+
 def no_hugepage_stalls():
     """Stop numpy asking for transparent huge pages on big arrays.
 
@@ -526,8 +541,12 @@ class ZarrArray:
             raise ZarrError(f"{path}: inner chunk {inner} is truncated")
         return self._pipeline.decode(data, f"{path} inner chunk {inner}")
 
-    def read_chunk(self, index):
-        """Decoded read unit at index (cached, read-only), or None when missing."""
+    def read_chunk(self, index, cache=True):
+        """Decoded read unit at index (read-only), or None when missing.
+
+        Chunks are kept in the shared cache unless cache is False (used by prefetch, whose
+        blocks are cached whole by ChimeraX).
+        """
         key = (self.path, tuple(index))
         a = CHUNK_CACHE.get(key)
         if a is None:
@@ -535,7 +554,8 @@ class ZarrArray:
             if a is None:
                 return None
             a.flags.writeable = False
-            CHUNK_CACHE.put(key, a)
+            if cache:
+                CHUNK_CACHE.put(key, a)
         return a
 
     # -- regions ------------------------------------------------------------
@@ -564,13 +584,16 @@ class ZarrArray:
             out.append((start, stop, step))
         return out
 
-    def read(self, selection=None, out=None):
+    def read(self, selection=None, out=None, background=False, report=None):
         """Read a strided region into a new array (native byte order) or into out.
 
         selection: per axis a slice, an int (kept as an axis of length 1) or
         (start, stop[, step]). out may be any writable array (or view) of the region's
         shape; values are cast to its dtype. Chunks are decoded in parallel; missing
-        chunks give fill_value.
+        chunks give fill_value. A dict passed as `report` gets "chunks" (how many the region
+        touches) and "missing" (how many of those are not in the store; zarr writers skip
+        chunks that are all fill_value, so some missing is normal).
+        background=True decodes on the prefetch pool and leaves the chunk cache alone.
         """
         sel = self.normalize_selection(selection)
         shape = tuple(len(range(*s)) for s in sel)
@@ -588,18 +611,23 @@ class ZarrArray:
             parts = task
             index = tuple(p[0] for p in parts)
             out_sl = tuple(p[2] for p in parts)
-            a = self.read_chunk(index)
+            a = self.read_chunk(index, cache=not background)
             if a is None:
                 out[out_sl] = fill
+                absent.append(index)
             else:
                 out[out_sl] = a[tuple(p[1] for p in parts)]
 
         tasks = list(itertools.product(*plans))
+        absent = []
         if len(tasks) == 1:
             one(tasks[0])
         else:
             # list() re-raises the first worker exception here.
-            list(_POOL.map(one, tasks))
+            list((_BACKGROUND_POOL if background else _POOL).map(one, tasks))
+        if report is not None:
+            report["chunks"] = len(tasks)
+            report["missing"] = len(absent)
         return out
 
 
