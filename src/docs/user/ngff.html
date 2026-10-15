@@ -42,7 +42,9 @@ Images open as a maximum-intensity projection coloured on the GPU, with a straig
 brightness ramp from the background to the maximum. The time points around the one shown
 are read ahead on background threads, and their textures built while nothing changes, so
 stepping and playing a long series are fast even at full resolution. See the README for
-what is measured and the settings below.
+what is measured and the settings below. Unsigned 16-bit data is shown as 8-bit (the log
+line gives the divisor per channel, and image levels and the histogram use those units);
+<code>open x.zarr bits 16</code> shows the stored values.
 </p>
 
 <p>

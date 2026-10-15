@@ -217,3 +217,9 @@ Cell_001_002, full resolution, two passes through all 150 time points, RTX PRO 6
 
 After the 45 s wait the whole series (125 GB) is in RAM and 83 time points' textures are on
 the GPU. Stills of one time point, 16-bit vs 8-bit: max pixel difference 2/255, mean 0.2.
+
+### v0.3.1: 8-bit is the default (2026-10-14, user decision)
+
+"8 bit should be the default, that's a good opt out": `bits 16` / `CHIMERAX_NGFF_DISPLAY_BITS=16`
+give the stored values. Thresholds and the Volume Viewer are in scaled units by default; the log
+line on open names the divisor per channel.
