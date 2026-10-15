@@ -12,10 +12,10 @@ ChimeraX's own packages. It needs ChimeraX 1.6 or later and is tested on Chimera
 From a wheel (GitHub release or `dist/` after a build):
 
 ```
-chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.2.1-py3-none-any.whl"
+chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.3.0-py3-none-any.whl"
 ```
 
-or type `toolshed install /path/to/chimerax_ngff-0.2.1-py3-none-any.whl` in the ChimeraX
+or type `toolshed install /path/to/chimerax_ngff-0.3.0-py3-none-any.whl` in the ChimeraX
 command line. Add `user false` to install for every user of a shared ChimeraX (needs
 write access to its site-packages). Once the bundle is on the ChimeraX Toolshed,
 `toolshed install ChimeraX-NGFF` works too.
@@ -87,6 +87,17 @@ ChimeraX reads, colours and uploads a time point the first time it is shown. For
   used, because a block read ahead is the newest and the one needed last. numpy's request
   for transparent huge pages is switched off in ChimeraX (it stalled big allocations).
 
+- **8-bit display** (`open x.zarr bits 8`, or `CHIMERAX_NGFF_DISPLAY_BITS=8`). Unsigned 16-bit
+  data is shown as `value >> shift`, clipped to 255, with one shift per channel fixed
+  from time point 0 so intensities stay comparable across time (the largest shift that
+  leaves 120 grey levels below the top of the ramp, as naparym-live does; 0 for data that
+  already fits). Half the memory (a whole 150-time-point full-resolution series is 132 GB
+  instead of 264 GB, so it fits in RAM) and half the bytes to the GPU (twice as many time
+  points stay resident, uploads take half as long). Image levels, the histogram and
+  thresholds are then in those units (the log line says the divisor per channel); the
+  stored data is untouched. On Cell_001_002 the 8-bit and 16-bit renders of one time point
+  differ by at most 2 of 255 in any pixel.
+
 Measured on a 150-time-point, 2-channel store (419 x 1458 x 722 voxels, 1.76 GB per time
 point) on an RTX PRO 6000, one new time point per step, full resolution:
 v0.1 2.1 s; v0.2 0.04 s within the drawn-ahead window, 0.2 to 0.4 s beyond it (limited by
@@ -101,6 +112,7 @@ Settings (environment variables):
 | `CHIMERAX_NGFF_LEVELS` | `auto` (default) or `omero`: use each channel's OMERO window as a linear ramp instead |
 | `CHIMERAX_NGFF_PROJECTION` | `mip` (default) or `blend` (ChimeraX's blended image, blended on the GPU) |
 | `CHIMERAX_NGFF_GPU_COLORMAP` | `1` (default) or `0`: colour on the CPU, as ChimeraX does by default |
+| `CHIMERAX_NGFF_DISPLAY_BITS` | `16` (default, values as stored) or `8`: show unsigned 16-bit data as 8-bit; `open x.zarr bits 8` does it for one open |
 | `CHIMERAX_NGFF_PREFETCH_GB` | memory for time points read ahead; default 75 % of the memory available (re-read as you step, so it follows other programs), never leaving less than 48 GB available; `0` turns prefetch off |
 | `CHIMERAX_NGFF_PREFETCH_THREADS` | decode threads for prefetch, default 32 |
 | `CHIMERAX_NGFF_GPU_GB` | cap on video memory for textures of time points not shown; default: no cap, whatever is free except 24 GB left for other programs; `0` turns drawing ahead and the bound off |

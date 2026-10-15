@@ -26,8 +26,17 @@ def gpu_colormap():
     return value not in ("0", "false", "no", "off")
 
 
-def open_ngff(session, path, file_name, series=None):
-    """Open a local OME-Zarr store as volumes; returns (models, status message)."""
+def display_bits():
+    """16 (values as stored, default) or 8, from CHIMERAX_NGFF_DISPLAY_BITS."""
+    return 8 if os.environ.get("CHIMERAX_NGFF_DISPLAY_BITS", "").strip() == "8" else 16
+
+
+def open_ngff(session, path, file_name, series=None, bits=None):
+    """Open a local OME-Zarr store as volumes; returns (models, status message).
+
+    bits=8 shows unsigned 16-bit data as 8-bit (value >> a per-channel shift): half the
+    memory and half the bytes to the GPU, so twice as many time points stay resident.
+    """
     from chimerax.core.errors import UserError
 
     from .grid import image_grids, show_full_region
@@ -37,11 +46,13 @@ def open_ngff(session, path, file_name, series=None):
     no_hugepage_stalls()
     from .render import install as install_direct_upload
     install_direct_upload()
+    if bits not in (None, 8, 16):
+        raise UserError(f"bits must be 8 or 16, not {bits}")
     path = path.rstrip("/") or "/"
     try:
         image = open_image(path, series=series)
         grids, warnings = image_grids(image, levels=levels_mode(), projection=projection_mode(),
-                                      gpu_colormap=gpu_colormap())
+                                      gpu_colormap=gpu_colormap(), bits=bits or display_bits())
     except (NGFFError, ZarrError) as e:
         raise UserError(str(e)) from None
 
@@ -111,4 +122,8 @@ def describe(image, name):
     parts.append(chans)
     parts.append(f"voxel size {sx:g} x {sy:g} x {sz:g} {unit}")
     parts.append(str(image.levels[0].array.dtype.newbyteorder("=").name))
+    if image.display_shifts and any(sh is not None for sh in image.display_shifts):
+        shown = ", ".join(f"{ch.label or f'channel {c}'} / {2 ** sh}"
+                          for c, (ch, sh) in enumerate(zip(image.channels, image.display_shifts)))
+        parts.append(f"shown as 8-bit (values {shown})")
     return ", ".join(parts)

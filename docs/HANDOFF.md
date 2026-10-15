@@ -197,3 +197,23 @@ upload, and only ~40 of 150 full-resolution time points (264 GB) fit in 98 GB of
 A RAM disk would not help: the cost is decoding and uploading, not the file read, and the
 decoded blocks are already kept in process memory. Next step if wanted: 8-bit display
 textures (as naparym-live does): half the bytes uploaded and resident.
+
+### v0.3.0: 8-bit display (2026-10-14)
+
+`open x.zarr bits 8` / `CHIMERAX_NGFF_DISPLAY_BITS=8` (default stays 16 until the user decides).
+`NGFFGrid(shift=k)` serves uint8 = min(value >> k, 255) (`ngff.to_uint8`, slabs on the decode
+pools, tens of ms per full-resolution channel), so ChimeraX itself sees uint8: GL_R8 textures,
+normalisation 1/255, histogram, thresholds, data cache all halve with no special cases.
+Shift per channel = floor(log2(top / 120)) from the time-point-0 ramp top (`ngff.display_shift`).
+
+Cell_001_002, full resolution, two passes through all 150 time points, RTX PRO 6000:
+
+| | pace | pass 1 | pass 2 |
+|---|---|---|---|
+| 16-bit | 8 steps/s | 0.25 s median | 0.17 s (150/150 over 0.1 s) |
+| 8-bit | 8 steps/s | 0.19 s (read-bound, no wait) | 0.008 s (0/150) |
+| 8-bit | 12 steps/s | 0.21 s (read-bound, no wait) | 0.047 s (0/150) |
+| 8-bit, 45 s after open | 12 steps/s | 0.006 s (0/150) | 0.006 s (0/150) |
+
+After the 45 s wait the whole series (125 GB) is in RAM and 83 time points' textures are on
+the GPU. Stills of one time point, 16-bit vs 8-bit: max pixel difference 2/255, mean 0.2.
