@@ -73,8 +73,7 @@ if flat:
           all(s.maps[0].display and s.maps[0].image_shown for s in ms))
     check("flat: shown at a subsample step (multiscale)", tuple(v0.region[2]) == (4, 4, 4),
           str(v0.region))
-    # Step to frame 10 the way the slider does, then read it.
-    from chimerax.map_series.slider import MapSeriesSlider  # noqa: F401  (bundle present)
+    # Step to frame 10, then read it.
     for s in ms:
         s.show_time(10)
     v10 = ms[0].maps[10]

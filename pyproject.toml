@@ -44,3 +44,7 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# ChimeraX scripts get `session` as a global.
+"tests/chimerax/*" = ["F821"]
