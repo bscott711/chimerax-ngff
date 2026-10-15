@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OME-Zarr (NGFF) images</title>
+</head>
+<body>
+<h3>Opening OME-Zarr (OME-NGFF) images</h3>
+
+<p>
+The ChimeraX-NGFF bundle opens local OME-Zarr stores (folders named <code>*.zarr</code>,
+usually <code>*.ome.zarr</code>) as volume data:
+</p>
+<pre>open <i>path</i>/image.ome.zarr</pre>
+<p>
+<b>File &gt; Open Folder...</b> (format &ldquo;OME-Zarr (OME-NGFF) image&rdquo;) and
+dragging the folder onto the ChimeraX window work as well. The format name is
+<b>OME-Zarr (NGFF)</b> and its nickname is <b>ngff</b>:
+<code>open <i>path</i> format ngff</code> forces it, which is needed for a folder name
+that does not end in <code>.zarr</code> or that ends in <code>/</code>.
+</p>
+
+<p>Option:</p>
+<ul>
+<li><code>series</code> <i>name</i> &ndash; open this series group of a bioformats2raw
+store (for example <code>series 1</code>) instead of the image the store describes at
+its root.</li>
+</ul>
+
+<p>
+Time points become a volume series (play them with the slider or the
+<code>vseries</code> command) and channels become separate coloured volumes, using the
+OMERO colours when the store has them (otherwise green, magenta, cyan, yellow, then
+gray). Lower resolution levels are read automatically whenever ChimeraX shows the data
+at a coarser step, so large images open quickly; they open showing the whole volume at
+a coarse step, and <code>volume #1 step 1</code> shows full resolution. Voxel sizes are
+used in the units the store gives (for example micrometres), as for OME-TIFF.
+</p>
+
+<p>
+Environment variables: <code>CHIMERAX_NGFF_CACHE_MB</code> sets the decoded-chunk
+cache (default 1024 MB, 0 disables it); <code>CHIMERAX_NGFF_LEVELS=omero</code> uses
+each channel's OMERO window as its initial image levels instead of ChimeraX's
+automatic levels.
+</p>
+
+<p>
+Supported: zarr v2 and v3 (including sharding), OME-NGFF 0.1 to 0.5, bioformats2raw
+layouts, and plain zarr arrays. Not supported in this version: remote stores (http,
+s3), labels, HCS plates, and restoring these volumes from ChimeraX sessions.
+</p>
+
+<p>Project page: <a href="https://github.com/bscott711/chimerax-ngff">github.com/bscott711/chimerax-ngff</a></p>
+</body>
+</html>

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["ChimeraX-BundleBuilder>=1.4.0"]
+build-backend = "chimerax.bundle_builder.cx_pep517"
+
+[project]
+name = "ChimeraX-NGFF"
+version = "0.1.0"
+description = "Open OME-Zarr (OME-NGFF) images in ChimeraX, using only ChimeraX's own numpy and imagecodecs"
+license = { text = "MIT" }
+authors = [{ name = "bscott711" }]
+readme = "README.md"
+requires-python = ">=3.9"
+# Only ChimeraX itself: the reader uses the numpy and imagecodecs ChimeraX ships.
+dependencies = ["ChimeraX-Core >=1.6"]
+dynamic = ["classifiers"]
+
+[project.urls]
+Home = "https://github.com/bscott711/chimerax-ngff"
+
+[chimerax]
+category = "Volume Data"
+min-session-version = 1
+max-session-version = 1
+classifiers = ["Development Status :: 3 - Alpha", "License :: OSI Approved :: MIT License"]
+
+[chimerax.package-data]
+"src/docs/user" = ["*.html"]
+
+# Name and nickname differ from the toolshed's "OME-Zarr" (ome-zarr, omezarr) format.
+# default-for makes `open x.zarr` pick this format even when that bundle is listed.
+[chimerax.data-format."OME-Zarr (NGFF)"]
+category = "Volume Data"
+nicknames = ["ngff"]
+suffixes = [".zarr"]
+allow-directory = true
+default-for = [".zarr"]
+synopsis = "OME-Zarr (OME-NGFF) image"
+reference-url = "https://ngff.openmicroscopy.org/"
+open = { want-path = true, check-path = false }
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# ChimeraX scripts get `session` as a global.
+"tests/chimerax/*" = ["F821"]

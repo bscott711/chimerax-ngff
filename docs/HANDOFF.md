@@ -27,6 +27,39 @@ out to all Argus users through the shared ChimeraX install; never modify upstrea
 - Moved the broken user site (`~/.local/share/ChimeraX/1.12/{lib,bin}`) to
   `~/archive/chimerax-user-site-2026-10-14/` (README inside says how to restore).
   ChimeraX then loads numpy 1.26.4 from its own site-packages.
+- Phase A bundle v0.1 on branch `feat/bundle` (PR to main): `src/` reader and opener,
+  portable tests (zarr 2 and 3 writers), opt-in real-store tests, `tests/chimerax/`
+  smoke, timing, render and GUI scripts. Installed for testing in bscott's ChimeraX
+  user site only (`devel install ... user true`); the system-wide install is pending.
+
+## Found while building v0.1
+
+- **Pyproject openers run in batch mode.** The classifier carries `batch:false` as a
+  string, and `open_command/manager.py` tests `if batch or not check_path` without
+  converting it, so `open()` gets a list of paths and the `name` option (often None).
+  `src/__init__.py` handles both forms.
+- **Scripts read every hidden frame on open.** In scripts (.cxc, `--script`) ChimeraX
+  updates each volume's drawing as soon as its region is set, which computes levels and
+  reads data for all 150-300 hidden volumes of a series (Cell_002: 9.3 s, 301 reads).
+  `open.py` runs `open_grids` with a fresh `session.in_script` flag and every grid gets
+  `initial_image_thresholds` (computed once per channel), so opening reads 3 regions
+  (0.11 s). Displayed volumes are still drawn by ChimeraX's command-finished handler.
+- **Large maps open as one plane.** ChimeraX shows only the middle z plane of maps over
+  256 Mvoxels; with levels the bundle switches to the full volume at the voxel-limit
+  step (step 4 = level 2 for our stores).
+- **`open x.zarr/` without a format fails** in ChimeraX's suffix detection ("has no
+  suffix"); `format ngff` works.
+- **Sessions do not restore** NGFF volumes: `map/session.py` reopens data through the
+  `map_data` format registry, which has no `ngff` entry.
+- **The Cell_009 backfill store is all zeros**, as are its DSR TIFFs (`decon_stage/
+  Decon/DSR_decon`, checked with tifffile) and its MIP stills. All 11 backfill stores
+  under `/mmfs2/.../opym_backfill/outputs/.../microscopy/Cell_0*` (written 2026-10-14)
+  decode to 0 at level 1 for their first, middle and last time points; zarr-python
+  agrees for Cell_009. That is a pipeline problem, not a reader one.
+  `20260924-SVO-memNG-mScar2xFYVE-FLM-Macropinocytosis/Cell_006` (flat, 2 channels,
+  real signal) stands in for colour checks.
+- The OMERO window written by opym (0-300) renders our data nearly black (values are
+  about 0-100), so ChimeraX's automatic levels stay the default (`CHIMERAX_NGFF_LEVELS`).
 
 ## Facts about ChimeraX 1.12 that the design uses
 
