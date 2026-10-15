@@ -223,3 +223,22 @@ the GPU. Stills of one time point, 16-bit vs 8-bit: max pixel difference 2/255, 
 "8 bit should be the default, that's a good opt out": `bits 16` / `CHIMERAX_NGFF_DISPLAY_BITS=16`
 give the stored values. Thresholds and the Volume Viewer are in scaled units by default; the log
 line on open names the divisor per channel.
+
+## v0.4.0: home view (2026-10-14, user: "same initial views in ChimeraX as in napari")
+
+ChimeraX opens looking down z; napari's home view (argus-desktop `HOME_ANGLES = (45, 0, 115)`) is a
+three-quarter view with the coverslip slab at the bottom. `src/homeview.py` sets that camera on the
+next frame after the open, once ChimeraX has run its own `initial_camera_view` (that runs when the
+first model is added, after our opener returns, so setting the camera inside `open_ngff` is
+overwritten). Applied only when the session had no models (`session.models._initialize_camera`).
+
+- napari's picture is the left-right mirror of the right-handed ChimeraX view along napari's
+  reported view direction (it draws x right, y down). A MIP is the same from either end except for
+  that mirroring, so the camera looks along the opposite direction: backward = (-0.6409, 0.6409,
+  0.4226), up = (-0.2988, 0.2988, -0.9063) in scene x, y, z. A camera matrix of the mirrored frame
+  is left-handed and ChimeraX ignores it silently.
+- `Place(axes=...)` takes the axis vectors as ROWS; `view matrix camera` takes them as columns of
+  its 3 x 4 matrix.
+- Opt out: `open x.zarr homeview false`, `CHIMERAX_NGFF_HOME_VIEW=0`. `view orient` returns to z.
+- Checked: Cell_001_002 stills of napari (Xvfb, software GL) and ChimeraX match; other model open
+  first leaves the camera alone; nogui open unaffected; portable tests 163 pass (4 new).

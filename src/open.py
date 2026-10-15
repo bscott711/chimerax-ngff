@@ -31,12 +31,13 @@ def display_bits():
     return 16 if os.environ.get("CHIMERAX_NGFF_DISPLAY_BITS", "").strip() == "16" else 8
 
 
-def open_ngff(session, path, file_name, series=None, bits=None):
+def open_ngff(session, path, file_name, series=None, bits=None, homeview=None):
     """Open a local OME-Zarr store as volumes; returns (models, status message).
 
     Unsigned 16-bit data is shown as 8-bit (value >> a per-channel shift) unless bits=16 (or
     CHIMERAX_NGFF_DISPLAY_BITS=16): half the memory and half the bytes to the GPU, so twice
-    as many time points stay resident.
+    as many time points stay resident. The camera starts at the lab's home view (the one napari
+    opens with; see homeview.py) unless homeview=false or CHIMERAX_NGFF_HOME_VIEW=0.
     """
     from chimerax.core.errors import UserError
 
@@ -66,6 +67,9 @@ def open_ngff(session, path, file_name, series=None, bits=None):
         models, _ = open_grids(session, grids, name)
         volumes = [v for m in models for v in m.all_models() if isinstance(v, Volume)]
         show_full_region(volumes)
+    from . import homeview as home
+    if home.enabled(homeview):
+        home.schedule(session, models)
     from .prefetch import start
     start(session, models)
     return models, describe(image, name)
