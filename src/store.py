@@ -137,6 +137,26 @@ _POOL = ThreadPoolExecutor(min(32, os.cpu_count() or 4),
                            thread_name_prefix="chimerax-ngff")
 
 
+def no_hugepage_stalls():
+    """Stop numpy asking for transparent huge pages on big arrays.
+
+    numpy madvises every large allocation for huge pages. Where the kernel's THP defrag is
+    "madvise" (Argus), each such page fault waits on direct memory compaction: opym measured
+    30 GB of 127 MB arrays taking 101 s, single allocations up to 1.9 s, against 15 s without.
+    A full-resolution time point here is 882 MB per channel. Same as NUMPY_MADVISE_HUGEPAGE=0.
+    Returns True when the switch was thrown.
+    """
+    try:
+        from numpy._core import multiarray
+    except ImportError:  # numpy < 2
+        from numpy.core import multiarray
+    try:
+        multiarray._set_madvise_hugepage(False)
+    except AttributeError:
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Codecs
 

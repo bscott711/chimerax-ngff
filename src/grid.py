@@ -25,13 +25,34 @@ class NGFFGrid(GridData):
         return self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step)
 
 
-def image_grids(image, levels="auto"):
+def rendering_options(image, projection="mip", gpu_colormap=True):
+    """Initial rendering options for the volumes of an image (GridData.initial_rendering_options).
+
+    projection "mip" shows a maximum-intensity projection (channels are then drawn one over
+    the other with a max blend, the usual fluorescence overlay); "blend" is ChimeraX's own
+    blended image. Both use 3-D textures (ChimeraX would otherwise pick its projection from
+    the single plane it shows while opening, before show_full_region widens it).
+    gpu_colormap colours on the GPU: the 16-bit data is uploaded as it is and mapped through
+    a 1-D colour table, instead of colouring every plane on the CPU into an RGBA texture.
+    """
+    options = {"colormap_on_gpu": bool(gpu_colormap)}
+    if min(image.level_size(0)) >= 8:
+        options["projection_mode"] = "3d"
+    if projection == "mip":
+        options["maximum_intensity_projection"] = True
+    elif gpu_colormap:
+        options["blend_on_gpu"] = True
+    return options
+
+
+def image_grids(image, levels="auto", projection="mip", gpu_colormap=True):
     """Grids for every (t, c) of an image, each wrapping its subsample levels.
 
     Every grid gets initial_image_thresholds, so ChimeraX never reads a hidden frame
     just to choose its levels (in scripts it would otherwise read all of them while
-    opening). levels="auto" uses ChimeraX's own rule on time point 0 at the coarsest
-    level; "omero" uses the channel's OMERO window where there is one.
+    opening). levels="auto" uses a linear ramp from the background to the maximum of time
+    point 0 at the coarsest level; "omero" uses the channel's OMERO window where there is
+    one. projection and gpu_colormap are described at rendering_options().
     Returns (grids, warnings).
     """
     from chimerax.map_data.subsample import SubsampledGrid
@@ -46,6 +67,7 @@ def image_grids(image, levels="auto"):
         else:
             thresholds.append(auto_image_levels(image, coarsest[0], c))
 
+    options = rendering_options(image, projection, gpu_colormap)
     nt, nc = image.nt, image.nc
     grids = []
     for t in range(nt):
@@ -63,6 +85,7 @@ def image_grids(image, levels="auto"):
                 g.channel = c
             g.initial_style = "image"
             g.initial_image_thresholds = thresholds[c]
+            g.initial_rendering_options = options
             grids.append(g)
     return grids, list(image.warnings)
 
@@ -76,9 +99,11 @@ def auto_image_levels(image, k, c):
     """ChimeraX's initial image levels (Volume.initial_image_levels) for channel c.
 
     Computed from time point 0 of level k, read at the power-of-two step that keeps it
-    under 16 Mvoxels: 10th and 99th percentile and maximum, at brightness 0, 0.8 and 1.
-    One deviation: constant data (an empty store) is shown dark, where ChimeraX's rule
-    puts its single value at full brightness and draws a solid white block.
+    under 16 Mvoxels: the 10th percentile (background) is black and the maximum is full
+    brightness, joined by a straight line. ChimeraX's own rule bends the curve through the
+    99th percentile at 0.8; a single linear ramp keeps brightness proportional to intensity.
+    One deviation from ChimeraX: constant data (an empty store) is shown dark, where its
+    rule puts the single value at full brightness and draws a solid white block.
     """
     from chimerax.map_data import MatrixValueStatistics
 
@@ -88,12 +113,12 @@ def auto_image_levels(image, k, c):
         step *= 2
     m = image.read_block(k, 0, c, (0, 0, 0), size, (step, step, step))
     ms = MatrixValueStatistics([m])
-    vlow, vmid, vmax = ms.rank_data_value(0.10), ms.rank_data_value(0.99), ms.maximum
+    vlow, vmax = ms.rank_data_value(0.10), ms.maximum
     if ms.minimum >= vmax:
         return ((vmax, 0.0), (vmax + 1.0, 1.0))
-    if vlow < vmid < vmax:
-        return ((vlow, 0.0), (vmid, 0.8), (vmax, 1.0))
-    return ((vlow, 0.0), (0.9 * vlow + 0.1 * vmax, 0.8), (vmax, 1.0))
+    if not vlow < vmax:
+        vlow = ms.minimum
+    return ((vlow, 0.0), (vmax, 1.0))
 
 
 def show_full_region(volumes):

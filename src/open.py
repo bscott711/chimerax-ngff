@@ -14,18 +14,32 @@ def levels_mode():
     return mode if mode in ("auto", "omero") else "auto"
 
 
+def projection_mode():
+    """"mip" (default) or "blend", from CHIMERAX_NGFF_PROJECTION."""
+    mode = os.environ.get("CHIMERAX_NGFF_PROJECTION", "").strip().lower()
+    return mode if mode in ("mip", "blend") else "mip"
+
+
+def gpu_colormap():
+    """Colour on the GPU unless CHIMERAX_NGFF_GPU_COLORMAP is 0/false/no/off."""
+    value = os.environ.get("CHIMERAX_NGFF_GPU_COLORMAP", "").strip().lower()
+    return value not in ("0", "false", "no", "off")
+
+
 def open_ngff(session, path, file_name, series=None):
     """Open a local OME-Zarr store as volumes; returns (models, status message)."""
     from chimerax.core.errors import UserError
 
     from .grid import image_grids, show_full_region
     from .ngff import NGFFError, open_image
-    from .store import ZarrError
+    from .store import ZarrError, no_hugepage_stalls
 
+    no_hugepage_stalls()
     path = path.rstrip("/") or "/"
     try:
         image = open_image(path, series=series)
-        grids, warnings = image_grids(image, levels=levels_mode())
+        grids, warnings = image_grids(image, levels=levels_mode(), projection=projection_mode(),
+                                      gpu_colormap=gpu_colormap())
     except (NGFFError, ZarrError) as e:
         raise UserError(str(e)) from None
 
