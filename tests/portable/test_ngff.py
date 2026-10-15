@@ -368,3 +368,45 @@ def test_reading_does_not_modify_the_store(tmp_path):
     im.read_block(0, 0, 0, (0, 0, 0), (5, 6, 4), (1, 1, 1))
     assert snapshot() == before
     assert json.loads(open(os.path.join(root, ".zattrs")).read())["multiscales"]
+
+
+# -- 8-bit display ---------------------------------------------------------------------
+
+
+def test_display_shift_leaves_about_120_levels():
+    assert ngff.display_shift(100) == 0  # already fits: shown as stored
+    assert ngff.display_shift(239) == 0
+    assert ngff.display_shift(240) == 1
+    assert ngff.display_shift(1064) == 3  # 133 levels
+    assert ngff.display_shift(65535) == 9
+    for top in (7, 130, 500, 1064, 9000, 65535):
+        sh = ngff.display_shift(top)
+        assert top / 2**sh >= min(top, 120) and top / 2**sh < 240 or sh == 0
+
+
+def test_to_uint8_is_shift_and_clip():
+    from concurrent.futures import ThreadPoolExecutor
+
+    rng = np.random.default_rng(3)
+    m = rng.integers(0, 65536, (50, 20, 30)).astype("u2")
+    for shift in (0, 3, 9):
+        ref = np.minimum(m >> shift, 255).astype("u1")
+        np.testing.assert_array_equal(ngff.to_uint8(m, shift), ref)
+        with ThreadPoolExecutor(4) as pool:
+            np.testing.assert_array_equal(ngff.to_uint8(m, shift, pool), ref)
+    assert ngff.to_uint8(m, 2).dtype == np.uint8
+
+
+def test_to_uint8_does_not_touch_the_source():
+    m = np.arange(2 * 3 * 4, dtype="u2").reshape(2, 3, 4) * 100
+    before = m.copy()
+    ngff.to_uint8(m, 0)
+    ngff.to_uint8(m, 2)
+    np.testing.assert_array_equal(m, before)
+
+
+def test_eight_bit_ok_only_for_unsigned_16():
+    assert ngff.eight_bit_ok(np.dtype("u2"))
+    assert not ngff.eight_bit_ok(np.dtype("u1"))
+    assert not ngff.eight_bit_ok(np.dtype("i2"))
+    assert not ngff.eight_bit_ok(np.dtype("f4"))

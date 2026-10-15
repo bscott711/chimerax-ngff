@@ -70,6 +70,7 @@ class Image:
         self.levels = levels
         self.channels = channels
         self.warnings = warnings
+        self.display_shifts = None  # per channel, set when shown as 8-bit (see grid.image_grids)
         self._classify_axes()
         self.value_type = chimerax_value_type(levels[0].array.dtype)
 
@@ -235,6 +236,53 @@ class Image:
         others = [a for a in range(len(self.axes)) if a not in cur]
         view = view[(Ellipsis,) + (np.newaxis,) * len(others)]
         return view.transpose(np.argsort(cur + others))
+
+
+# Grey levels kept below the top of a channel's display range when 16-bit data is shown as
+# 8-bit (naparym-live uses the same rule; side by side, 121-138 levels looked identical).
+DISPLAY_LEVELS = 120
+
+
+def display_shift(top, levels=DISPLAY_LEVELS):
+    """Right shift that leaves `levels` grey levels below `top`: floor(log2(top / levels)), >= 0.
+
+    top is the upper end of the display range (the maximum of time point 0). The shift is
+    fixed for a channel so intensities stay comparable across time points.
+    """
+    shift = 0
+    while top / 2 ** (shift + 1) >= levels:
+        shift += 1
+    return shift
+
+
+def to_uint8(m, shift, pool=None):
+    """uint8 copy of an unsigned 16-bit block: m >> shift, values over 255 clipped to 255.
+
+    The work is split over z slabs on `pool` (numpy releases the GIL on slabs this big), so a
+    full-resolution block takes tens of milliseconds instead of a few tenths of a second.
+    """
+    import numpy as np
+
+    out = np.empty(m.shape, np.uint8)
+
+    def one(sl):
+        part = m[sl] >> shift if shift else m[sl].copy()
+        np.minimum(part, 255, out=part)
+        out[sl] = part
+
+    n = m.shape[0]
+    slabs = [slice(i, min(i + 16, n)) for i in range(0, n, 16)]
+    if pool is None or len(slabs) == 1:
+        for sl in slabs:
+            one(sl)
+    else:
+        list(pool.map(one, slabs))
+    return out
+
+
+def eight_bit_ok(dtype):
+    """Whether a stored type is shown as 8-bit on request: unsigned 16-bit integers."""
+    return dtype.kind == "u" and dtype.itemsize == 2
 
 
 def chimerax_value_type(dtype):

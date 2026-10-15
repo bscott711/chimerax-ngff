@@ -2,27 +2,34 @@
 
 import math
 
+import numpy as np
 from chimerax.map_data import GridData
+
+from .ngff import display_shift, eight_bit_ok, to_uint8
+from .store import _BACKGROUND_POOL, _POOL
 
 
 class NGFFGrid(GridData):
     """One (time point, channel, level) of an ngff.Image."""
 
-    def __init__(self, image, level, t, c, name, rgba):
+    def __init__(self, image, level, t, c, name, rgba, shift=None):
         self.image = image
         self.level = level
         self.t = t
         self.c = c
+        self.shift = shift  # None: values as stored; else shown as uint8 of value >> shift
         lev = image.levels[level]
         # volume_from_grid_data reuses an open grid with the same (path, grid_id),
         # so every (level, t, c) needs its own id.
-        GridData.__init__(self, image.level_size(level), value_type=image.value_type,
+        value_type = image.value_type if shift is None else np.dtype(np.uint8)
+        GridData.__init__(self, image.level_size(level), value_type=value_type,
                           origin=image.level_origin(level), step=image.level_step(level),
                           name=name, path=image.root, file_type="ngff",
                           grid_id=f"{lev.path} t={t} c={c}", default_color=rgba)
 
     def read_matrix(self, ijk_origin, ijk_size, ijk_step, progress):
-        return self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step)
+        m = self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step)
+        return m if self.shift is None else to_uint8(m, self.shift, _POOL)
 
     def read_ahead(self, ijk_origin, ijk_size, ijk_step):
         """(matrix, any_data) for the prefetcher, read on its own threads.
@@ -35,6 +42,8 @@ class NGFFGrid(GridData):
         report = {}
         m = self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step,
                                   background=True, report=report)
+        if self.shift is not None:
+            m = to_uint8(m, self.shift, _BACKGROUND_POOL)
         return m, report.get("missing", 0) < report.get("chunks", 1)
 
 
@@ -58,14 +67,16 @@ def rendering_options(image, projection="mip", gpu_colormap=True):
     return options
 
 
-def image_grids(image, levels="auto", projection="mip", gpu_colormap=True):
+def image_grids(image, levels="auto", projection="mip", gpu_colormap=True, bits=16):
     """Grids for every (t, c) of an image, each wrapping its subsample levels.
 
     Every grid gets initial_image_thresholds, so ChimeraX never reads a hidden frame
     just to choose its levels (in scripts it would otherwise read all of them while
     opening). levels="auto" uses a linear ramp from the background to the maximum of time
     point 0 at the coarsest level; "omero" uses the channel's OMERO window where there is
-    one. projection and gpu_colormap are described at rendering_options().
+    one. projection and gpu_colormap are described at rendering_options(). bits=8 shows
+    unsigned 16-bit data as uint8 (value >> a per-channel shift): half the memory, half the
+    bytes to the GPU, and image levels in those units; shifts are in the returned info.
     Returns (grids, warnings).
     """
     from chimerax.map_data.subsample import SubsampledGrid
@@ -80,6 +91,12 @@ def image_grids(image, levels="auto", projection="mip", gpu_colormap=True):
         else:
             thresholds.append(auto_image_levels(image, coarsest[0], c))
 
+    shifts = [None] * image.nc
+    if bits == 8 and eight_bit_ok(image.levels[0].array.dtype):
+        shifts = [display_shift(th[-1][0]) for th in thresholds]
+        thresholds = [tuple((v / 2**sh, b) for v, b in th) for th, sh in zip(thresholds, shifts)]
+    image.display_shifts = shifts
+
     options = rendering_options(image, projection, gpu_colormap)
     nt, nc = image.nt, image.nc
     grids = []
@@ -87,11 +104,11 @@ def image_grids(image, levels="auto", projection="mip", gpu_colormap=True):
         for c in range(nc):
             ch = image.channels[c]
             name = ch.label or image.name
-            g = NGFFGrid(image, 0, t, c, name, ch.rgba)
+            g = NGFFGrid(image, 0, t, c, name, ch.rgba, shifts[c])
             if sublevels:
                 g = SubsampledGrid(g)
                 for k, cell in sublevels:
-                    g.add_subsamples(NGFFGrid(image, k, t, c, name, ch.rgba), cell)
+                    g.add_subsamples(NGFFGrid(image, k, t, c, name, ch.rgba, shifts[c]), cell)
             if nt > 1:
                 g.series_index = t
             if nc > 1:

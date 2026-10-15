@@ -64,6 +64,10 @@ check("matrix() of a prefetched frame adds nothing to the cache", pf.cache.used 
 grid = v.data.available_subsamplings[
     v.data.choose_subsampling(v.step_aligned_region(v.region)[2])[0]]
 b = grid.image.read_block(grid.level, grid.t, grid.c, (0, 0, 0), a.shape[::-1], (1, 1, 1))
+if grid.shift is not None:  # 8-bit display: the block is value >> shift, clipped
+    from chimerax.ngff.ngff import to_uint8
+    b = to_uint8(b, grid.shift)
+    check("8-bit display: blocks are uint8", a.dtype == np.uint8, str(a.dtype))
 check("prefetched block is bit-exact", np.array_equal(a, b[:a.shape[0], :a.shape[1], :a.shape[2]]))
 
 # The histogram comes from stats.py and agrees with numpy on the extremes.
