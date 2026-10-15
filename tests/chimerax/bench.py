@@ -30,6 +30,7 @@ nframes = int(os.environ.get("NGFF_BENCH_FRAMES", "12"))
 start = int(os.environ.get("NGFF_BENCH_START", "1"))
 scenario = os.environ.get("NGFF_BENCH_SCENARIO", "step")
 idle = float(os.environ.get("NGFF_BENCH_IDLE", "0"))
+pace = float(os.environ.get("NGFF_BENCH_PACE", "0"))  # seconds per step, as a player would
 gpu = os.environ.get("NGFF_BENCH_GPU", "1")
 profile = os.environ.get("NGFF_BENCH_PROFILE") == "1"
 profile_at = int(os.environ.get("NGFF_BENCH_PROFILE_AT", "0"))
@@ -184,6 +185,8 @@ try:
     if scenario == "scrub":
         rng = random.Random(1)
         times = [rng.randrange(1, nt) for _ in range(nframes)]
+    elif scenario == "loop":  # as Play does with loop on: all time points, round and round
+        times = [(start + i) % nt for i in range(nframes)]
     elif scenario == "revisit":
         times = list(range(start, start + nframes // 2)) * 2
     else:
@@ -207,11 +210,22 @@ try:
             import pstats
             pstats.Stats(prof, stream=sys.__stdout__).sort_stats("cumulative").print_stats(28)
         walls.append(wall)
+        if pace:  # the redraw loop keeps ticking between the player's steps
+            t_next = time.perf_counter() + max(0.0, pace - wall)
+            while time.perf_counter() < t_next:
+                draw_frame()
+                time.sleep(0.01)
         report(f"BENCH frame t={t} wall {wall:.3f} s  read {spent['read_block']:.3f}  "
                f"texdata {spent['texdata']:.3f}  color {spent['color']:.3f}  "
                f"blend {spent['blend']:.3f}  upload {spent['upload']:.3f}  "
                f"drawn {drawn}  pf {_pf()}  gpu +{gpu_mb() - base_gpu} MB  rss {rss_gb():.1f} GB")
 
+    if scenario == "loop":
+        for k in range(0, len(walls), nt):
+            chunk = sorted(walls[k:k + nt])
+            report(f"BENCH pass {k // nt + 1}: median {statistics.median(chunk):.3f} s  "
+                   f"p95 {chunk[int(0.95 * (len(chunk) - 1))]:.3f}  max {chunk[-1]:.3f}  "
+                   f"over 0.1 s: {sum(w > 0.1 for w in chunk)}/{len(chunk)}")
     s = sorted(walls)
     p95 = s[min(len(s) - 1, int(round(0.95 * (len(s) - 1))))]
     report(f"BENCH summary scenario={scenario} step={step} n={len(walls)} "
