@@ -27,15 +27,16 @@ def gpu_colormap():
 
 
 def display_bits():
-    """16 (values as stored, default) or 8, from CHIMERAX_NGFF_DISPLAY_BITS."""
-    return 8 if os.environ.get("CHIMERAX_NGFF_DISPLAY_BITS", "").strip() == "8" else 16
+    """8 (default) or 16 (values as stored), from CHIMERAX_NGFF_DISPLAY_BITS."""
+    return 16 if os.environ.get("CHIMERAX_NGFF_DISPLAY_BITS", "").strip() == "16" else 8
 
 
 def open_ngff(session, path, file_name, series=None, bits=None):
     """Open a local OME-Zarr store as volumes; returns (models, status message).
 
-    bits=8 shows unsigned 16-bit data as 8-bit (value >> a per-channel shift): half the
-    memory and half the bytes to the GPU, so twice as many time points stay resident.
+    Unsigned 16-bit data is shown as 8-bit (value >> a per-channel shift) unless bits=16 (or
+    CHIMERAX_NGFF_DISPLAY_BITS=16): half the memory and half the bytes to the GPU, so twice
+    as many time points stay resident.
     """
     from chimerax.core.errors import UserError
 
