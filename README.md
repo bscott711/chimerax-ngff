@@ -12,10 +12,10 @@ ChimeraX's own packages. It needs ChimeraX 1.6 or later and is tested on Chimera
 From a wheel (GitHub release or `dist/` after a build):
 
 ```
-chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.2.0-py3-none-any.whl"
+chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.2.1-py3-none-any.whl"
 ```
 
-or type `toolshed install /path/to/chimerax_ngff-0.2.0-py3-none-any.whl` in the ChimeraX
+or type `toolshed install /path/to/chimerax_ngff-0.2.1-py3-none-any.whl` in the ChimeraX
 command line. Add `user false` to install for every user of a shared ChimeraX (needs
 write access to its site-packages). Once the bundle is on the ChimeraX Toolshed,
 `toolshed install ChimeraX-NGFF` works too.
@@ -67,12 +67,15 @@ ChimeraX reads, colours and uploads a time point the first time it is shown. For
 - **Prefetch.** From the moment a series opens, the time points around the one shown
   (ahead in the direction of travel first, wrapping round as the player does) are read on
   background threads, at the resolution and region being shown, into ChimeraX's data
-  cache. About two dozen time points are kept ready while you look at one; once you start
-  stepping or playing, the window grows to the memory budget. Time points not yet in the
-  store (a live acquisition) are looked for again every few seconds.
-- **Draw ahead.** When nothing has changed for 0.3 s, the next time points' 3-D textures
-  are built one channel at a time, so stepping onto them only swaps a texture. Video
-  memory is bounded: at most 48 GB of textures, and never below 24 GB left free for other
+  cache. If the whole series fits the memory budget (all of a half-resolution one) it is
+  read in full right away and then loops from memory; otherwise about two dozen time points
+  are kept ready while you look at one, and once you start stepping or playing the window
+  grows to the memory budget. Time points not yet in the store (a live acquisition) are
+  looked for again every few seconds.
+- **Draw ahead.** When nothing has changed for 0.3 s, or between the steps of a player, the
+  next time points' 3-D textures are built one channel at a time, so stepping onto them only
+  swaps a texture. A whole half-resolution series (66 GB of textures) stays resident, so it
+  loops with no loading. Video memory is bounded: never below 24 GB left free for other
   programs on the GPU.
 - **Direct upload.** The block the prefetcher read goes to OpenGL as it is, instead of
   being copied plane by plane into a staging array first.
@@ -98,9 +101,9 @@ Settings (environment variables):
 | `CHIMERAX_NGFF_LEVELS` | `auto` (default) or `omero`: use each channel's OMERO window as a linear ramp instead |
 | `CHIMERAX_NGFF_PROJECTION` | `mip` (default) or `blend` (ChimeraX's blended image, blended on the GPU) |
 | `CHIMERAX_NGFF_GPU_COLORMAP` | `1` (default) or `0`: colour on the CPU, as ChimeraX does by default |
-| `CHIMERAX_NGFF_PREFETCH_GB` | memory for time points read ahead; default half of the memory available when a series opens, never leaving less than 48 GB available; `0` turns prefetch off |
-| `CHIMERAX_NGFF_PREFETCH_THREADS` | decode threads for prefetch, default 16 |
-| `CHIMERAX_NGFF_GPU_GB` | video memory for textures of time points not shown, default 48; `0` turns drawing ahead and the bound off |
+| `CHIMERAX_NGFF_PREFETCH_GB` | memory for time points read ahead; default 75 % of the memory available (re-read as you step, so it follows other programs), never leaving less than 48 GB available; `0` turns prefetch off |
+| `CHIMERAX_NGFF_PREFETCH_THREADS` | decode threads for prefetch, default 32 |
+| `CHIMERAX_NGFF_GPU_GB` | cap on video memory for textures of time points not shown; default: no cap, whatever is free except 24 GB left for other programs; `0` turns drawing ahead and the bound off |
 
 ## Supported
 

@@ -140,9 +140,9 @@ _POOL = ThreadPoolExecutor(min(32, os.cpu_count() or 4),
 def _background_threads():
     value = os.environ.get("CHIMERAX_NGFF_PREFETCH_THREADS", "").strip()
     try:
-        n = int(value) if value else 16
+        n = int(value) if value else 32
     except ValueError:
-        n = 16
+        n = 32
     return max(1, min(n, os.cpu_count() or 4))
 
 

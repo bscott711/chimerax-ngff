@@ -26,14 +26,15 @@ from . import schedule
 # threads are shared) but their Python code competes with the main thread for the GIL:
 # with 24 in flight, drawing a frame took 0.4 s instead of 0.025 s.
 IN_FLIGHT = 4
+BIG_BLOCK_BYTES = 256 * 2**20  # blocks this big are mostly I/O and decoding, not Python...
+IN_FLIGHT_BIG = 8  # ...so more of them can be read at once
 IDLE_FRAMES = 24  # time points kept ready around the shown one until it starts moving
 RESERVE_BYTES = 48 * 2**30  # the cache never takes memory below this much staying available
-GPU_CAP_BYTES = 48 * 2**30  # textures kept for hidden time points, at most
 GPU_UNKNOWN_BYTES = 8 * 2**30  # texture budget where the free video memory cannot be read
 GPU_RESERVE_BYTES = 24 * 2**30  # video memory left free for other programs (the decon server)
 IDLE_S = 0.3  # nothing changing for this long: draw ahead
 EMPTY_RETRY_S = 3.0  # how long before looking again for a time point not in the store yet
-DEFAULT_FRACTION = 0.5  # of the memory available when a series opens
+DEFAULT_FRACTION = 0.75  # of the memory available (plus what the cache holds already)
 
 
 def available_bytes():
@@ -51,7 +52,9 @@ def available_bytes():
 def budget_bytes():
     """Memory the prefetch cache may use; 0 turns prefetch off.
 
-    CHIMERAX_NGFF_PREFETCH_GB sets it; otherwise half of the memory available now.
+    CHIMERAX_NGFF_PREFETCH_GB sets it; otherwise DEFAULT_FRACTION of the memory that is
+    available (and re-read whenever the shown time point or region changes, so it follows
+    what other programs on the machine are using).
     """
     value = os.environ.get("CHIMERAX_NGFF_PREFETCH_GB", "").strip()
     if value:
@@ -64,14 +67,14 @@ def budget_bytes():
 
 
 def gpu_cap_bytes():
-    """CHIMERAX_NGFF_GPU_GB (0 turns off drawing ahead and bounding), else GPU_CAP_BYTES."""
+    """CHIMERAX_NGFF_GPU_GB (0 turns off drawing ahead and bounding); None: no fixed cap."""
     value = os.environ.get("CHIMERAX_NGFF_GPU_GB", "").strip()
     if value:
         try:
             return max(0, int(float(value) * 2**30))
         except ValueError:
             pass
-    return GPU_CAP_BYTES
+    return None
 
 
 def free_video_memory(render):
@@ -156,6 +159,7 @@ class Prefetcher:
         self.direction = schedule.Direction(self.nt)
         self.cache = FrameCache(budget, self._urgency)
         self.cap = budget
+        self._explicit_budget = bool(os.environ.get("CHIMERAX_NGFF_PREFETCH_GB", "").strip())
         self._cur = 0
         self._dir = 1
         self._signature = None
@@ -169,12 +173,13 @@ class Prefetcher:
         self._empty_checked = 0.0
         self._done = queue.SimpleQueue()
         self._stats = {}  # id(block) -> (weakref to block, MatrixValueStatistics)
-        self._pool = ThreadPoolExecutor(IN_FLIGHT, thread_name_prefix="chimerax-ngff-ahead")
+        self._pool = ThreadPoolExecutor(IN_FLIGHT_BIG, thread_name_prefix="chimerax-ngff-ahead")
+        self._in_flight = IN_FLIGHT
         self._failed = False
         # The region the volumes have before they are shown (what ChimeraX reads first).
         self._own_region = {c: _region_tuple(s.maps[-1].region) for c, s in enumerate(self.series)}
         self._gpu_cap = gpu_cap_bytes()
-        self._ahead_ok = self._gpu_cap > 0  # bounding textures at all
+        self._ahead_ok = self._gpu_cap != 0  # bounding textures at all
         self._draw_ahead = self._ahead_ok
         self._gpu_frames = 1  # time points whose textures may be kept
         self._idle_since = time.monotonic()
@@ -255,7 +260,7 @@ class Prefetcher:
             self._build_todo()
         elif not self._todo and (took or self._retry_due()):
             self._build_todo()
-        if self._todo and len(self._inflight) < IN_FLIGHT:
+        if self._todo and len(self._inflight) < self._in_flight:
             self._submit()
         if self._ahead_ok:
             self._manage_textures(sig_changed)
@@ -286,15 +291,21 @@ class Prefetcher:
             self._requests[c] = (grid.level, step, region)
             total += size[0] * size[1] * size[2] * grid.value_type.itemsize
         self._frame_bytes = max(total, 1)
+        big = self._frame_bytes // max(1, len(self._requests)) >= BIG_BLOCK_BYTES
+        self._in_flight = IN_FLIGHT_BIG if big else IN_FLIGHT
         avail = available_bytes()
+        if avail is not None and not self._explicit_budget:
+            self.cap = int(DEFAULT_FRACTION * (avail + self.cache.used))
         limit = self.cap
         if avail is not None:
             limit = min(limit, self.cache.used + max(0, avail - RESERVE_BYTES))
         self.cache.resize(max(limit, self._frame_bytes))
         capacity = max(1, self.cache.size // self._frame_bytes)
-        if not self.direction.playing:
-            # Not playing or scrubbing: a neighbourhood is enough. The whole budget is for
-            # when the time point starts moving, so looking at one frame does not read the series.
+        if not self.direction.playing and capacity < self.nt:
+            # Not playing or scrubbing, and the series does not fit: a neighbourhood is
+            # enough. The whole budget is for when the time point starts moving, so looking at
+            # one frame does not read what cannot all be kept anyway. A series that fits (the
+            # whole of a half-resolution one) is read in full, so it loops from memory.
             capacity = min(capacity, IDLE_FRAMES)
         self._wanted = schedule.wanted(t, self._dir, self.nt, capacity)
 
@@ -315,7 +326,8 @@ class Prefetcher:
             if changed:
                 self._size_gpu_window()
                 self._trim_images()
-            elif self._draw_ahead and now - self._idle_since >= IDLE_S:
+            elif self._draw_ahead and (now - self._idle_since >= IDLE_S
+                                       or self.direction.playing):
                 self._draw_one_ahead()
         except Exception as e:
             self._ahead_ok = False
@@ -323,13 +335,13 @@ class Prefetcher:
 
     def _size_gpu_window(self):
         """How many time points' textures fit the video memory budget."""
-        budget = self._gpu_cap
         free = free_video_memory(self.session.main_view.render)
         if free is None:
-            budget = min(budget, GPU_UNKNOWN_BYTES)  # cannot see how much is free: be modest
+            budget = GPU_UNKNOWN_BYTES  # cannot see how much is free: be modest
         else:
-            held = self._textured_bytes()
-            budget = min(budget, held + max(0, free - GPU_RESERVE_BYTES))
+            budget = self._textured_bytes() + max(0, free - GPU_RESERVE_BYTES)
+        if self._gpu_cap is not None:
+            budget = min(budget, self._gpu_cap)
         self._gpu_frames = max(1, int(budget // self._frame_bytes))
 
     def _textured_bytes(self):
@@ -419,7 +431,7 @@ class Prefetcher:
 
     def _submit(self):
         """Start reads, most urgent first, until IN_FLIGHT are running."""
-        while self._todo and len(self._inflight) < IN_FLIGHT:
+        while self._todo and len(self._inflight) < self._in_flight:
             key = self._todo.pop()
             if key in self.cache.data or key in self._inflight:
                 continue

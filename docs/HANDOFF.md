@@ -172,3 +172,28 @@ Tests: portable 155 pass (zarr 3) / 132 pass 38 skip (zarr 2), `tests/chimerax/s
 24/24 and `prefetch_check.py` 13/13 against the dev install in a private HOME.
 Dev loop: `HOME=<private> chimerax --nogui --exit --cmd "devel install <repo> user true"`
 (delete `build/`, `*.egg-info`, `dist/` after a version change, or the old wheel name sticks).
+
+### v0.2.1: loops (2026-10-14, after the user's first test)
+
+User: after the first pass the old version played smoothly; v0.2 stepped at 0.4 s every time
+at full and half resolution (quarter was fine). Cause: windows too small to keep a whole
+loop (24 time points read ahead while idle, GPU textures capped at 48 GB and built only
+when idle, so while playing nothing was built ahead). Changes: a series that fits the RAM
+budget is read in full at once; RAM budget is 75 % of (available + held), re-read as you
+step; no fixed GPU cap (free VRAM minus 24 GB); textures are built ahead between the steps of
+a player too; 8 big reads in flight and 32 decode threads. `bench.py` scenario `loop` with
+`NGFF_BENCH_PACE` (seconds per step) measures it, per pass.
+
+Cell_001_002, RTX PRO 6000, two passes through all 150 time points, per-step time:
+
+| resolution, pace | pass 1 median (steps over 0.1 s) | pass 2 median |
+|---|---|---|
+| half, 8 steps/s, no wait | 0.028 s (4/150) | 0.018 s (0/150) |
+| full, 4 steps/s, no wait | 0.022 s (34/150) | 0.010 s (0/150) |
+| full, 8 steps/s, no wait | 0.24 s (150/150) | 0.17 s (150/150) |
+
+The last row is the floor of 16-bit data: 1.76 GB per time point over PCIe is 0.15-0.2 s per
+upload, and only ~40 of 150 full-resolution time points (264 GB) fit in 98 GB of VRAM.
+A RAM disk would not help: the cost is decoding and uploading, not the file read, and the
+decoded blocks are already kept in process memory. Next step if wanted: 8-bit display
+textures (as naparym-live does): half the bytes uploaded and resident.
