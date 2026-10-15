@@ -29,6 +29,7 @@ IN_FLIGHT = 4
 IDLE_FRAMES = 24  # time points kept ready around the shown one until it starts moving
 RESERVE_BYTES = 48 * 2**30  # the cache never takes memory below this much staying available
 GPU_CAP_BYTES = 48 * 2**30  # textures kept for hidden time points, at most
+GPU_UNKNOWN_BYTES = 8 * 2**30  # texture budget where the free video memory cannot be read
 GPU_RESERVE_BYTES = 24 * 2**30  # video memory left free for other programs (the decon server)
 IDLE_S = 0.3  # nothing changing for this long: draw ahead
 EMPTY_RETRY_S = 3.0  # how long before looking again for a time point not in the store yet
@@ -189,6 +190,10 @@ class Prefetcher:
         triggers = session.triggers
         self._frame_handler = triggers.add_handler("new frame", self._on_new_frame)
         self._close_handler = triggers.add_handler("remove models", self._on_models_closed)
+        try:  # stop reads that have not started when ChimeraX quits
+            self._quit_handler = triggers.add_handler("app quit", lambda *_: self.close())
+        except Exception:
+            self._quit_handler = None
 
     # -- life cycle ---------------------------------------------------------
 
@@ -206,7 +211,9 @@ class Prefetcher:
             return
         self.closed = True
         triggers = self.session.triggers
-        for h in (self._frame_handler, self._close_handler):
+        for h in (self._frame_handler, self._close_handler, self._quit_handler):
+            if h is None:
+                continue
             try:
                 triggers.remove_handler(h)
             except Exception:
@@ -297,6 +304,9 @@ class Prefetcher:
         """Keep video memory bounded and, when idle, draw the next time points ahead."""
         now = time.monotonic()
         view = self.session.main_view
+        if view.render is None:  # no graphics (nogui): nothing to keep in video memory
+            self._ahead_ok = False
+            return
         cam = tuple(view.camera.position.matrix.flat)
         if changed or cam != self._camera:
             self._camera = cam
@@ -315,7 +325,9 @@ class Prefetcher:
         """How many time points' textures fit the video memory budget."""
         budget = self._gpu_cap
         free = free_video_memory(self.session.main_view.render)
-        if free is not None:
+        if free is None:
+            budget = min(budget, GPU_UNKNOWN_BYTES)  # cannot see how much is free: be modest
+        else:
             held = self._textured_bytes()
             budget = min(budget, held + max(0, free - GPU_RESERVE_BYTES))
         self._gpu_frames = max(1, int(budget // self._frame_bytes))
@@ -537,7 +549,8 @@ def start(session, models):
     if budget <= 0 or not series:
         return None
     prefetcher = Prefetcher(session, series, budget)
-    session.ngff_prefetchers = getattr(session, "ngff_prefetchers", []) + [prefetcher]
+    live = [p for p in getattr(session, "ngff_prefetchers", []) if not p.closed]
+    session.ngff_prefetchers = live + [prefetcher]
     session.logger.info(f"Reading time points ahead in the background "
                         f"(up to {budget / 2**30:.0f} GB of memory)")
     return prefetcher

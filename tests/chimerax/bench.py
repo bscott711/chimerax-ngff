@@ -99,9 +99,14 @@ def timed(owner, name, key):
 
 from chimerax.graphics import opengl  # noqa: E402
 from chimerax.map import image3d  # noqa: E402
-from chimerax.ngff import ngff, render  # noqa: E402
+from chimerax.ngff import ngff  # noqa: E402
 
-render.install()  # before timing wrappers go on top
+try:  # v0.2 and later: install the direct upload before the timing wrappers go on top
+    from chimerax.ngff import render  # noqa: E402
+
+    render.install()
+except ImportError:
+    pass
 timed(image3d.Texture3dPlanes, "_texture_3d_data", "texdata")
 timed(ngff.Image, "read_block", "read_block")
 if os.environ.get("NGFF_BENCH_TRACE_GL"):

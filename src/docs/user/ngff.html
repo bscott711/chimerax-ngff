@@ -38,10 +38,22 @@ used in the units the store gives (for example micrometres), as for OME-TIFF.
 </p>
 
 <p>
-Environment variables: <code>CHIMERAX_NGFF_CACHE_MB</code> sets the decoded-chunk
+Images open as a maximum-intensity projection coloured on the GPU, with a straight-line
+brightness ramp from the background to the maximum. The time points around the one shown
+are read ahead on background threads, and their textures built while nothing changes, so
+stepping and playing a long series are fast even at full resolution. See the README for
+what is measured and the settings below.
+</p>
+
+<p>
+Environment variables: <code>CHIMERAX_NGFF_PROJECTION=blend</code> keeps ChimeraX's
+blended image; <code>CHIMERAX_NGFF_PREFETCH_GB</code> sets the memory for time points read
+ahead (<code>0</code> turns prefetch off); <code>CHIMERAX_NGFF_GPU_GB</code> sets the video
+memory for textures of time points not shown (<code>0</code> turns drawing ahead off);
+<code>CHIMERAX_NGFF_CACHE_MB</code> sets the decoded-chunk
 cache (default 1024 MB, 0 disables it); <code>CHIMERAX_NGFF_LEVELS=omero</code> uses
-each channel's OMERO window as its initial image levels instead of ChimeraX's
-automatic levels.
+each channel's OMERO window as its initial image levels instead of the automatic
+ramp.
 </p>
 
 <p>
