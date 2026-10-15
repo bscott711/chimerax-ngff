@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OME-Zarr (NGFF) images</title>
+</head>
+<body>
+<h3>Opening OME-Zarr (OME-NGFF) images</h3>
+
+<p>
+The ChimeraX-NGFF bundle opens local OME-Zarr stores (folders named <code>*.zarr</code>,
+usually <code>*.ome.zarr</code>) as volume data. Use the command
+</p>
+<pre>open <i>path</i>/image.ome.zarr</pre>
+<p>
+or <b>File &gt; Open Folder...</b>, or drag the folder onto the ChimeraX window.
+The format name is <b>OME-Zarr (NGFF)</b> and its nickname is <b>ngff</b>, so
+<code>open <i>path</i> format ngff</code> forces it (needed for a folder whose name
+does not end in <code>.zarr</code>).
+</p>
+
+<p>Option:</p>
+<ul>
+<li><code>series</code> <i>name</i> &ndash; open this series group of a
+bioformats2raw store (for example <code>series 1</code>) instead of the image the
+store describes at its root.</li>
+</ul>
+
+<p>
+Time points become a volume series (play them with the slider or <code>vseries</code>
+commands) and channels become separate coloured volumes. Lower resolution levels are
+used automatically when ChimeraX shows the data at a coarser step, so large images open
+without reading the full resolution data. Voxel sizes are used in the units the store
+gives (for example micrometres), as for OME-TIFF.
+</p>
+
+<p>
+Supported: zarr v2 and v3 (including sharding), OME-NGFF 0.1 to 0.5, bioformats2raw
+layouts, and plain zarr arrays. Not supported in this version: remote stores (http,
+s3), labels, and HCS plates.
+</p>
+
+<p>Project page: <a href="https://github.com/bscott711/chimerax-ngff">github.com/bscott711/chimerax-ngff</a></p>
+</body>
+</html>
