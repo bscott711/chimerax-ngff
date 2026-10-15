@@ -15,6 +15,7 @@ Prints one TIMING line per measurement (seconds, time.perf_counter).
 
 import os
 import statistics
+import sys
 import time
 
 from chimerax.core.commands import run
@@ -26,6 +27,15 @@ nframes = int(os.environ.get("NGFF_TIMING_FRAMES", "20"))
 start = int(os.environ.get("NGFF_TIMING_START", "1"))
 step = os.environ.get("NGFF_TIMING_STEP")
 gui = session.ui.is_gui
+
+
+def report(msg):
+    # In the GUI print() goes to the ChimeraX log; write to the terminal as well.
+    print(msg)
+    if gui:
+        sys.__stdout__.write(msg + "\n")
+        sys.__stdout__.flush()
+
 
 if os.environ.get("NGFF_TIMING_NO_DEFER") == "1":
     from chimerax.ngff import open as ngff_open
@@ -62,8 +72,8 @@ reads_open = len(reads)
 if gui:
     run(session, "wait 1")  # draws one frame: builds and renders the first images
 t_first = time.perf_counter() - t0
-print(f"TIMING open_command {t_open:.3f} s ({reads_open} region reads)")
-print(f"TIMING first_image {t_first:.3f} s ({'rendered' if gui else 'data read, nogui'})")
+report(f"TIMING open_command {t_open:.3f} s ({reads_open} region reads)")
+report(f"TIMING first_image {t_first:.3f} s ({'rendered' if gui else 'data read, nogui'})")
 
 m = models[0]
 series = m.map_series if isinstance(m, MultiChannelSeries) else [m]
@@ -77,7 +87,7 @@ if step:
         s.maps[0].matrix()
     if gui:
         run(session, "wait 1")
-    print(f"TIMING set_step_{step} {time.perf_counter() - t2:.3f} s")
+    report(f"TIMING set_step_{step} {time.perf_counter() - t2:.3f} s")
 player = Play_Series(series, session)
 steps = []
 last = min(start + nframes, len(series[0].maps))
@@ -90,8 +100,8 @@ for t in range(start, last):
         run(session, "wait 1")
     steps.append(time.perf_counter() - t1)
 if steps:
-    print(f"TIMING frame_step frames {start}-{last - 1} step {step or 'default'} "
+    report(f"TIMING frame_step frames {start}-{last - 1} step {step or 'default'} "
           f"n={len(steps)} median {statistics.median(steps):.3f} s, min {min(steps):.3f}, "
           f"max {max(steps):.3f}, first {steps[0]:.3f}")
-    print(f"TIMING frame_step_reads {len(reads) - reads_open} region reads for {len(steps)} "
+    report(f"TIMING frame_step_reads {len(reads) - reads_open} region reads for {len(steps)} "
           f"frames x {len(series)} channel(s)")
