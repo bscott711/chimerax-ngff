@@ -59,6 +59,21 @@ What you get:
   blended image back for one volume; `CHIMERAX_NGFF_PROJECTION=blend` does it for every
   store.
 
+### Making a store from TIFF stacks
+
+`tools/tiff_series_to_ngff.py` (needs numpy, tifffile, numcodecs and zarr < 3; not part of the
+wheel) turns a folder of one-TIFF-per-time-point-and-channel stacks, named like the lattice
+light-sheet `cell3_CamB_ch0_stack0007_488nm_0065519msec_..._decon.tif`, into one store this
+bundle plays: channels ordered by wavelength (488 green, 560 magenta, others colour-blind-safe),
+the time step from the `msec` stamps, three 2x block-mean levels. TIFFs carry no voxel size, so
+pass `--xy-um` and `--z-um`, or leave them out and edit the three `scale` entries in `.zattrs`
+later (the pixel data do not change). The store is written as `<name>.partial` and renamed only
+when every stack is in.
+
+```
+tools/tiff_series_to_ngff.py SRC_DIR OUT.ome.zarr [--xy-um 0.104 --z-um 0.2] [--workers 24]
+```
+
 ### Fast time points
 
 ChimeraX reads, colours and uploads a time point the first time it is shown. For a
