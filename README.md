@@ -67,11 +67,11 @@ light-sheet `cell3_CamB_ch0_stack0007_488nm_0065519msec_..._decon.tif`, into one
 bundle plays: channels ordered by wavelength (488 green, 560 magenta, others colour-blind-safe),
 the time step from the `msec` stamps, three 2x block-mean levels. TIFFs carry no voxel size, so
 pass `--xy-um` and `--z-um`, or leave them out and edit the three `scale` entries in `.zattrs`
-later (the pixel data do not change). The store is written as `<name>.partial` and renamed only
+later (the pixel data do not change; `--note` keeps a sentence in `.zattrs` saying where an assumed size came from). `--wavelengths 488 560` keeps only those channels. The store is written as `<name>.partial` and renamed only
 when every stack is in.
 
 ```
-tools/tiff_series_to_ngff.py SRC_DIR OUT.ome.zarr [--xy-um 0.104 --z-um 0.2] [--workers 24]
+tools/tiff_series_to_ngff.py SRC_DIR OUT.ome.zarr [--xy-um 0.104 --z-um 0.2] [--wavelengths 488 560] [--note TEXT] [--workers 24]
 ```
 
 ### Fast time points
