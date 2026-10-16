@@ -129,3 +129,26 @@ def test_no_half_written_store_under_the_final_name(tmp_path):
     with pytest.raises(ValueError, match="expected"):
         tool.build(src, str(out), workers=1, log=lambda *_: None)
     assert not out.exists()
+
+
+def test_wavelength_subset_drops_the_other_channels(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    truth = make_series(src, np.random.default_rng(4), nt=2)
+    out = str(tmp_path / "two.ome.zarr")
+    tool.build(src, out, xy_um=0.104, workers=1, log=lambda *_: None, wavelengths=[488, 560],
+               note="xy assumed")
+    img = open_image(out)
+    assert img.nc == 2 and [ch.label for ch in img.channels] == ["488 nm", "560 nm"]
+    for c, wl in enumerate((488, 560)):
+        for t in range(2):
+            assert np.array_equal(block(img, 0, t, c), truth[wl, t]), (wl, t)
+    assert tool.json.loads((tmp_path / "two.ome.zarr" / ".zattrs").read_text())["voxel_size_note"] == "xy assumed"
+
+
+def test_unknown_wavelength_is_refused(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    make_series(src, np.random.default_rng(6), nt=2)
+    with pytest.raises(SystemExit, match="405"):
+        tool.build(src, str(tmp_path / "x.ome.zarr"), workers=1, log=lambda *_: None, wavelengths=[405])

@@ -20,7 +20,8 @@ by editing the three `scale` entries in .zattrs; the pixel data do not change.
 
 Needs numpy, tifffile, zarr < 3 and numcodecs (the bioimaging venv has them).
 
-    tiff_series_to_ngff.py SRC_DIR OUT.ome.zarr [--xy-um 0.104 --z-um 0.2] [--workers 24]
+    tiff_series_to_ngff.py SRC_DIR OUT.ome.zarr [--xy-um 0.104 --z-um 0.2] [--wavelengths 488 560]
+                           [--note TEXT] [--workers 24]
 """
 
 import argparse
@@ -116,12 +117,17 @@ def convert_one(task):
     return t, c, wl, int(vol.max()), float(np.percentile(sample, 99.99))
 
 
-def build(src, out, xy_um=None, z_um=None, workers=24, log=print):
+def build(src, out, xy_um=None, z_um=None, workers=24, log=print, wavelengths=None, note=None):
     import numcodecs
     import tifffile
     import zarr
 
     found = scan(src)
+    if wavelengths:
+        missing = [w for w in wavelengths if w not in found]
+        if missing:
+            raise SystemExit(f"no {missing} nm stacks in {src} (have {sorted(found)})")
+        found = {w: found[w] for w in wavelengths}
     nt = check_complete(found)
     wls = sorted(found)
     first = found[wls[0]][0][0]
@@ -167,7 +173,9 @@ def build(src, out, xy_um=None, z_um=None, workers=24, log=print):
             {"type": "scale", "scale": [dt, 1.0, zstep * f, spatial * f, spatial * f]}]})
     stem = os.path.basename(out)
     stem = stem[:-len(".ome.zarr")] if stem.endswith(".ome.zarr") else stem
+    extra = {"voxel_size_note": note} if note else {}
     root.attrs.update({
+        **extra,
         "multiscales": [{"version": "0.4", "name": stem, "axes": axes, "datasets": datasets}],
         "omero": {"name": stem, "channels": [
             {"label": f"{wl} nm", "color": COLORS.get(wl, "FFFFFF"), "active": True,
@@ -186,9 +194,13 @@ def main(argv=None):
     ap.add_argument("out")
     ap.add_argument("--xy-um", type=float, help="x and y voxel size in micrometres")
     ap.add_argument("--z-um", type=float, help="z voxel size in micrometres (default: xy)")
+    ap.add_argument("--wavelengths", type=int, nargs="+", metavar="NM",
+                    help="only these channels (default: every wavelength found)")
+    ap.add_argument("--note", help="free text kept in .zattrs as voxel_size_note, e.g. where the voxel size "
+                    "came from when it is an assumption")
     ap.add_argument("--workers", type=int, default=24)
     a = ap.parse_args(argv)
-    build(a.src, a.out, a.xy_um, a.z_um, a.workers)
+    build(a.src, a.out, a.xy_um, a.z_um, a.workers, wavelengths=a.wavelengths, note=a.note)
 
 
 if __name__ == "__main__":
