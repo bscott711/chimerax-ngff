@@ -35,6 +35,12 @@ GPU_RESERVE_BYTES = 24 * 2**30  # video memory left free for other programs (the
 IDLE_S = 0.3  # nothing changing for this long: draw ahead
 EMPTY_RETRY_S = 3.0  # how long before looking again for a time point not in the store yet
 DEFAULT_FRACTION = 0.75  # of the memory available (plus what the cache holds already)
+# Argus is shared: every DCV desktop and ChimeraX window draws on the same GPU, and the
+# acquisition staging and the decon servers share the RAM. On 2026-10-23 one window drew a whole
+# 100-time-point series ahead onto the GPU (50 GB, 98% of it full) and another cached 83 GB.
+# Each window gets a fixed share by default; the env variables below still override.
+DEFAULT_GPU_CAP_BYTES = 8 * 2**30  # video memory for time points drawn ahead
+DEFAULT_CACHE_CAP_BYTES = 16 * 2**30  # memory for time points read ahead
 
 
 def available_bytes():
@@ -54,7 +60,7 @@ def budget_bytes():
 
     CHIMERAX_NGFF_PREFETCH_GB sets it; otherwise DEFAULT_FRACTION of the memory that is
     available (and re-read whenever the shown time point or region changes, so it follows
-    what other programs on the machine are using).
+    what other programs on the machine are using), but never more than DEFAULT_CACHE_CAP_BYTES.
     """
     value = os.environ.get("CHIMERAX_NGFF_PREFETCH_GB", "").strip()
     if value:
@@ -62,19 +68,27 @@ def budget_bytes():
             return max(0, int(float(value) * 2**30))
         except ValueError:
             pass
-    avail = available_bytes()
-    return int(DEFAULT_FRACTION * avail) if avail else 16 * 2**30
+    return default_cache_bytes(available_bytes())
+
+
+def default_cache_bytes(avail):
+    """The prefetch cache's size with no CHIMERAX_NGFF_PREFETCH_GB: a share of `avail` (the
+    memory available, or None where unknown), capped."""
+    if not avail:
+        return DEFAULT_CACHE_CAP_BYTES
+    return min(int(DEFAULT_FRACTION * avail), DEFAULT_CACHE_CAP_BYTES)
 
 
 def gpu_cap_bytes():
-    """CHIMERAX_NGFF_GPU_GB (0 turns off drawing ahead and bounding); None: no fixed cap."""
+    """Video memory for time points drawn ahead: CHIMERAX_NGFF_GPU_GB (0 turns off drawing ahead
+    and bounding), else DEFAULT_GPU_CAP_BYTES."""
     value = os.environ.get("CHIMERAX_NGFF_GPU_GB", "").strip()
     if value:
         try:
             return max(0, int(float(value) * 2**30))
         except ValueError:
             pass
-    return None
+    return DEFAULT_GPU_CAP_BYTES
 
 
 def free_video_memory(render):
@@ -295,7 +309,7 @@ class Prefetcher:
         self._in_flight = IN_FLIGHT_BIG if big else IN_FLIGHT
         avail = available_bytes()
         if avail is not None and not self._explicit_budget:
-            self.cap = int(DEFAULT_FRACTION * (avail + self.cache.used))
+            self.cap = default_cache_bytes(avail + self.cache.used)
         limit = self.cap
         if avail is not None:
             limit = min(limit, self.cache.used + max(0, avail - RESERVE_BYTES))
@@ -564,5 +578,6 @@ def start(session, models):
     live = [p for p in getattr(session, "ngff_prefetchers", []) if not p.closed]
     session.ngff_prefetchers = live + [prefetcher]
     session.logger.info(f"Reading time points ahead in the background "
-                        f"(up to {budget / 2**30:.0f} GB of memory)")
+                        f"(up to {budget / 2**30:.0f} GB of memory and "
+                        f"{(gpu_cap_bytes() or 0) / 2**30:.0f} GB of video memory)")
     return prefetcher

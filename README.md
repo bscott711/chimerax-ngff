@@ -12,10 +12,10 @@ ChimeraX's own packages. It needs ChimeraX 1.6 or later and is tested on Chimera
 From a wheel (GitHub release or `dist/` after a build):
 
 ```
-chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.4.0-py3-none-any.whl"
+chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.4.1-py3-none-any.whl"
 ```
 
-or type `toolshed install /path/to/chimerax_ngff-0.4.0-py3-none-any.whl` in the ChimeraX
+or type `toolshed install /path/to/chimerax_ngff-0.4.1-py3-none-any.whl` in the ChimeraX
 command line. Add `user false` to install for every user of a shared ChimeraX (needs
 write access to its site-packages). Once the bundle is on the ChimeraX Toolshed,
 `toolshed install ChimeraX-NGFF` works too.
@@ -138,9 +138,9 @@ Settings (environment variables):
 | `CHIMERAX_NGFF_GPU_COLORMAP` | `1` (default) or `0`: colour on the CPU, as ChimeraX does by default |
 | `CHIMERAX_NGFF_DISPLAY_BITS` | `8` (default): unsigned 16-bit data is shown as 8-bit; `16`: values as stored. `open x.zarr bits 16` does it for one open |
 | `CHIMERAX_NGFF_HOME_VIEW` | `1` (default): start at the three-quarter home view; `0`: ChimeraX's own look down z. `open x.zarr homeview false` does it for one open |
-| `CHIMERAX_NGFF_PREFETCH_GB` | memory for time points read ahead; default 75 % of the memory available (re-read as you step, so it follows other programs), never leaving less than 48 GB available; `0` turns prefetch off |
+| `CHIMERAX_NGFF_PREFETCH_GB` | memory for time points read ahead; default 75 % of the memory available (re-read as you step, so it follows other programs) but at most 16 GB per window (Argus is shared), never leaving less than 48 GB available; `0` turns prefetch off |
 | `CHIMERAX_NGFF_PREFETCH_THREADS` | decode threads for prefetch, default 32 |
-| `CHIMERAX_NGFF_GPU_GB` | cap on video memory for textures of time points not shown; default: no cap, whatever is free except 24 GB left for other programs; `0` turns drawing ahead and the bound off |
+| `CHIMERAX_NGFF_GPU_GB` | cap on video memory for textures of time points not shown; default 8 GB per window (one window drew a whole 100-time-point series, 50 GB, onto a GPU that also drives every DCV desktop), and 24 GB always stay free for other programs; `0` turns drawing ahead and the bound off |
 
 ## Supported
 
