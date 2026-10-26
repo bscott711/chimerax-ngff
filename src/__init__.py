@@ -28,7 +28,7 @@ class _NGFFBundleAPI(BundleAPI):
             @property
             def open_args(self):
                 from chimerax.core.commands import BoolArg, IntArg, StringArg
-                return {"series": StringArg, "bits": IntArg, "homeview": BoolArg}
+                return {"series": StringArg, "bits": IntArg, "homeview": BoolArg, "align": BoolArg}
 
         return NGFFOpenerInfo()
 

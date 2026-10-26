@@ -71,6 +71,7 @@ class Image:
         self.channels = channels
         self.warnings = warnings
         self.display_shifts = None  # per channel, set when shown as 8-bit (see grid.image_grids)
+        self.channel_offsets = {}  # channel -> (x, y, z) origin shift in the axes' unit (see alignment.py)
         self._classify_axes()
         self.value_type = chimerax_value_type(levels[0].array.dtype)
 
@@ -142,8 +143,11 @@ class Image:
         """Voxel size (x, y, z) of level k in the axes' own units."""
         return tuple(float(s) for s in self._xyz(self.levels[k].scale, 1.0))
 
-    def level_origin(self, k):
-        return tuple(float(t) for t in self._xyz(self.levels[k].translation, 0.0))
+    def level_origin(self, k, c=None):
+        """Origin (x, y, z) of level k, moved by channel c's alignment offset when it has one."""
+        origin = tuple(float(t) for t in self._xyz(self.levels[k].translation, 0.0))
+        off = self.channel_offsets.get(c)
+        return origin if off is None else tuple(o + d for o, d in zip(origin, off))
 
     def subsample_levels(self, tol=1e-3):
         """[(k, (cx, cy, cz))] for the levels usable as ChimeraX subsamples of level 0.

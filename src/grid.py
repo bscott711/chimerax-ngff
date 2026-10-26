@@ -23,7 +23,7 @@ class NGFFGrid(GridData):
         # so every (level, t, c) needs its own id.
         value_type = image.value_type if shift is None else np.dtype(np.uint8)
         GridData.__init__(self, image.level_size(level), value_type=value_type,
-                          origin=image.level_origin(level), step=image.level_step(level),
+                          origin=image.level_origin(level, c), step=image.level_step(level),
                           name=name, path=image.root, file_type="ngff",
                           grid_id=f"{lev.path} t={t} c={c}", default_color=rgba)
 
