@@ -1,4 +1,4 @@
-"""ChimeraX check: a chanalign sidecar moves the origin of the channel it lists, and `align false` / a mismatched file do not.
+"""ChimeraX check: a channelaligner sidecar moves the origin of the channel it lists, and `align false` / a mismatched file do not.
 
   HOME=<private> chimerax --nogui --exit --cmd "devel install <repo> user true"
   HOME=<private> chimerax --nogui --exit --script tests/chimerax/align_check.py

@@ -1,4 +1,4 @@
-"""Channel alignment sidecar (chanalign): which file is read, when it is ignored, and the origin shift it gives a channel."""
+"""Channel alignment sidecar (channelaligner): which file is read, when it is ignored, and the origin shift it gives a channel."""
 
 import json
 import os
@@ -9,7 +9,7 @@ from cxngff import alignment
 from cxngff.ngff import open_image
 from test_ngff import OMERO, flat_scales, make_store, tczyx
 
-# The same file chanalign (tests/test_core.py::test_golden_sidecar) and argus-desktop pin; shape/voxel adapted below.
+# The same file channelaligner (tests/test_core.py::test_golden_sidecar) and argus-desktop pin; shape/voxel adapted below.
 GOLDEN = {"version": 1, "store": "/x/viewer/x_dsr.ome.zarr", "shape_zyx": [9, 20, 17], "voxel_um": [0.136] * 3,
           "reference": 0, "reference_label": "GFP 488", "moving": [{"channel": 1, "label": "mScarlet 561",
           "shift_um": [1.7, -0.15, -0.26]}], "method": "phase_xcorr", "model": "translation",
@@ -18,20 +18,14 @@ GOLDEN = {"version": 1, "store": "/x/viewer/x_dsr.ome.zarr", "shape_zyx": [9, 20
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
-    monkeypatch.setenv(alignment.ROOT_ENV, str(tmp_path / "central"))
+def store(tmp_path):
     root = str(tmp_path / "viewer" / "cell_dsr.ome.zarr")
     make_store(root, tczyx(), ["0", "1"], flat_scales(2), OMERO, chunks=(1, 1, 4, 8, 8))
     return root
 
 
-def write(store, data, central=False):
-    real = os.path.realpath(store)
-    folder = os.path.dirname(real)
-    if central:
-        folder = os.path.join(os.environ[alignment.ROOT_ENV], folder.lstrip("/"))
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, "cell_dsr.align.json")
+def write(store, data):
+    path = alignment.sidecar_file(store)
     with open(path, "w") as f:
         json.dump(data, f)
     return path
@@ -70,13 +64,15 @@ def test_a_sidecar_for_another_store_or_a_broken_one_is_ignored(store, change):
     assert im.channel_offsets == {} and "ignored" in note
 
 
-def test_central_root_and_newer_file_wins(store):
-    central = write(store, GOLDEN, central=True)
-    assert open_image(store) and alignment.read_alignment(store, (17, 20, 9), (0.136,) * 3, "micrometer", 2)[0] == {
-        1: pytest.approx((-0.26, -0.15, 1.7))}
-    beside = write(store, {**GOLDEN, "moving": [{"channel": 1, "label": "m", "shift_um": [0, 0, 0.5]}]})
-    os.utime(beside, (os.path.getmtime(central) + 10,) * 2)
-    assert alignment.read_alignment(store, (17, 20, 9), (0.136,) * 3, "micrometer", 2)[0] == {1: (0.5, 0.0, 0.0)}
+def test_only_the_file_next_to_the_data_is_read(store, tmp_path):
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    (other / "cell_dsr.align.json").write_text(json.dumps(GOLDEN))  # same name, wrong folder: ignored
+    args = (store, (17, 20, 9), (0.136,) * 3, "micrometer", 2)
+    assert alignment.read_alignment(*args) == ({}, None)
+    write(store, GOLDEN)
+    assert alignment.read_alignment(*args)[0] == {1: pytest.approx((-0.26, -0.15, 1.7))}
+    assert alignment.sidecar_file(store) == os.path.join(os.path.dirname(os.path.realpath(store)), "cell_dsr.align.json")
 
 
 def test_units_are_converted_and_unknown_units_refuse(store):

@@ -1,16 +1,14 @@
-"""Channel alignment: the sidecar `<name>.align.json` written by chanalign (bscott711/chanalign).
+"""Channel alignment: the sidecar `<name>.align.json` written by channelaligner (bscott711/channelaligner, package chanalign).
 
 Pure Python (no ChimeraX import) so the portable tests run it. The contract is the same one argus-desktop's
-napari_open.py reads (argus-desktop/CONTRACT.md): the file sits beside `<name>.ome.zarr`, or under $CHANALIGN_ROOT at
-the store's absolute path; the newer wins. `shift_um` is (z, y, x) micrometres ADDED to a channel's positions, which
-here moves the channel's volume origin. A file for a differently shaped store, or of another version, is ignored.
+napari_open.py reads (argus-desktop/CONTRACT.md): the file sits next to `<name>.ome.zarr`, nowhere else.
+`shift_um` is (z, y, x) micrometres ADDED to a channel's positions, which here moves the channel's volume origin. A file
+for a differently shaped store, or of another version, is ignored.
 """
 
 import json
 import os
 
-ROOT_ENV = "CHANALIGN_ROOT"
-DEFAULT_ROOT = "/mmfs2/scratch/SDSMT.LOCAL/bscott/chanalign"
 VERSION = 1
 _UM_PER_UNIT = {"micrometer": 1.0, "micron": 1.0, "um": 1.0, "µm": 1.0, "nanometer": 1e-3, "nm": 1e-3,
                 "millimeter": 1e3, "mm": 1e3}
@@ -24,12 +22,9 @@ def _stem(store_path):
     return name
 
 
-def sidecar_files(store_path):
+def sidecar_file(store_path):
     real = os.path.realpath(store_path)
-    stem = _stem(real)
-    root = os.environ.get(ROOT_ENV, DEFAULT_ROOT)
-    return [os.path.join(os.path.dirname(real), stem + ".align.json"),
-            os.path.join(root, os.path.dirname(real).lstrip("/"), stem + ".align.json")]
+    return os.path.join(os.path.dirname(real), _stem(real) + ".align.json")
 
 
 def read_alignment(store_path, size_xyz, step_xyz, unit, n_channels):
@@ -37,10 +32,9 @@ def read_alignment(store_path, size_xyz, step_xyz, unit, n_channels):
 
     size_xyz and step_xyz are level 0's voxel counts and sizes, in x, y, z order as ChimeraX uses.
     """
-    found = [p for p in sidecar_files(store_path) if os.path.isfile(p)]
-    if not found:
+    path = sidecar_file(store_path)
+    if not os.path.isfile(path):
         return {}, None
-    path = max(found, key=os.path.getmtime)
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
