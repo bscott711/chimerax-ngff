@@ -31,13 +31,15 @@ def display_bits():
     return 16 if os.environ.get("CHIMERAX_NGFF_DISPLAY_BITS", "").strip() == "16" else 8
 
 
-def open_ngff(session, path, file_name, series=None, bits=None, homeview=None):
+def open_ngff(session, path, file_name, series=None, bits=None, homeview=None, align=None):
     """Open a local OME-Zarr store as volumes; returns (models, status message).
 
     Unsigned 16-bit data is shown as 8-bit (value >> a per-channel shift) unless bits=16 (or
     CHIMERAX_NGFF_DISPLAY_BITS=16): half the memory and half the bytes to the GPU, so twice
     as many time points stay resident. The camera starts at the lab's home view (the one napari
-    opens with; see homeview.py) unless homeview=false or CHIMERAX_NGFF_HOME_VIEW=0.
+    opens with; see homeview.py) unless homeview=false or CHIMERAX_NGFF_HOME_VIEW=0. A channel alignment saved
+    beside the store by chanalign (see alignment.py) moves the channels it lists, unless align=false or
+    CHIMERAX_NGFF_ALIGN=0.
     """
     from chimerax.core.errors import UserError
 
@@ -53,6 +55,8 @@ def open_ngff(session, path, file_name, series=None, bits=None, homeview=None):
     path = path.rstrip("/") or "/"
     try:
         image = open_image(path, series=series)
+        from . import alignment
+        align_note = alignment.apply_to_image(image, path, alignment.enabled(align))
         grids, warnings = image_grids(image, levels=levels_mode(), projection=projection_mode(),
                                       gpu_colormap=gpu_colormap(), bits=bits or display_bits())
     except (NGFFError, ZarrError) as e:
@@ -61,6 +65,8 @@ def open_ngff(session, path, file_name, series=None, bits=None, homeview=None):
     name = (file_name or "").rstrip("/") or os.path.basename(path)
     for w in warnings:
         session.logger.warning(f"{name}: {w}")
+    if align_note:
+        session.logger.info(f"{name}: {align_note}")
 
     from chimerax.map.volume import Volume, open_grids
     with _deferred_volume_updates(session):

@@ -53,6 +53,12 @@ What you get:
 - **Initial image levels** are a straight line from the background (10th percentile,
   black) to the maximum (full brightness), computed once per channel from the first time
   point at the coarsest level and shared by all time points.
+- **Channel alignment**: a `<name>.align.json` saved beside the store by
+  [chanalign](https://github.com/bscott711/chanalign) (or under `$CHANALIGN_ROOT`, newer file wins) moves the channels it
+  lists: each channel's volume origin is shifted by its (z, y, x) micrometres, the store is not touched, and the log says
+  so. `open x.ome.zarr format ngff align false` (or `CHIMERAX_NGFF_ALIGN=0`) shows the data unshifted. A file made for a
+  differently shaped store, or of another version, is ignored with a log line. `src/alignment.py`; the contract is in
+  argus-desktop's `CONTRACT.md`.
 - **Rendering defaults**: a maximum-intensity projection, coloured on the GPU (the 16-bit
   data is uploaded as it is and mapped through a colour table, not coloured plane by
   plane on the CPU). `volume #1 maximumIntensityProjection false` gives ChimeraX's
