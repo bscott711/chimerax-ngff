@@ -18,6 +18,7 @@ OME-TIFF reader does.
 import math
 import os
 import posixpath
+import stat
 
 import numpy as np
 
@@ -311,10 +312,15 @@ def chimerax_value_type(dtype):
 def open_image(path, series=None):
     """Image for the OME-Zarr store (or plain zarr array) at a local path."""
     root = os.path.abspath(os.path.expanduser(path.rstrip("/") or "/"))
-    if not os.path.isdir(root):
-        if os.path.exists(root):
-            raise NGFFError(f"{path}: not a folder; an OME-Zarr store is a folder")
-        raise NGFFError(f"{path}: no such folder (only local OME-Zarr stores can be opened)")
+    try:
+        is_dir = stat.S_ISDIR(os.stat(root).st_mode)
+    except PermissionError:
+        raise NGFFError(f"{path}: permission denied: you cannot read {root} "
+                        "(is it in someone else's folder?)") from None
+    except OSError:
+        raise NGFFError(f"{path}: no such folder (only local OME-Zarr stores can be opened)") from None
+    if not is_dir:
+        raise NGFFError(f"{path}: not a folder; an OME-Zarr store is a folder")
     try:
         fmt, kind, _ = node_info(root)
         if kind is None:

@@ -51,11 +51,14 @@ def schedule(session, models):
     """Apply the home view once, after ChimeraX has added `models` and set its own first view.
 
     ChimeraX looks down z when the first model is added, which happens after the opener
-    returns, so this waits for the next frame. Nothing is changed when other models were
-    already open (their view is the user's), or when the volumes are never added.
+    returns, so this waits for the next frame. Nothing is changed when another 3D model is
+    already displayed (their view is the user's), or when the volumes are never added. The test is
+    "no 3D model shown yet", not ChimeraX's first-model flag, so closing everything and opening
+    again (or a second dataset after closing the first) starts at the same view. 2D overlay
+    labels are not in drawing_bounds and do not block it.
     """
-    if not getattr(session.models, "_initialize_camera", False) or not hasattr(session, "main_view"):
-        return
+    if not hasattr(session, "main_view") or session.main_view.drawing_bounds() is not None:
+        return  # something 3D is already shown: its view is the user's
     from chimerax.core.triggerset import DEREGISTER
 
     waited = [0]
