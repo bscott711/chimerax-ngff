@@ -17,6 +17,11 @@ GOLDEN = {"version": 1, "store": "/x/viewer/x_dsr.ome.zarr", "shape_zyx": [9, 20
           "spread_um": [0.2, 0.2, 0.1], "created": "2026-10-26T12:00:00", "tool_version": "0.1.0"}
 
 
+@pytest.fixture(autouse=True)
+def _private_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))  # never read the real ~/.local/share
+
+
 @pytest.fixture
 def store(tmp_path):
     root = str(tmp_path / "viewer" / "cell_dsr.ome.zarr")
@@ -88,3 +93,60 @@ def test_grid_origin_for_a_shifted_channel_reaches_chimerax_grid_data():
     # NGFFGrid passes level_origin(level, c): checked by source so this file needs no ChimeraX.
     src = open(os.path.join(os.path.dirname(alignment.__file__), "grid.py")).read()
     assert "origin=image.level_origin(level, c)" in src
+
+
+# --- the per-user private file (decision D01) ---
+
+ARGS = ((17, 20, 9), (0.136,) * 3, "micrometer", 2)
+
+
+@pytest.fixture
+def xdg(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    return tmp_path / "xdg"
+
+
+def write_private(store, data):
+    path = alignment.private_file(store)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f)
+    return path
+
+
+def test_private_file_path_golden_vector(monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", "/x")
+    assert (alignment.private_file("/mmfs1/scratch/lab/viewer/Cell_001_dsr.ome.zarr")
+            == "/x/chanalign/alignments/Cell_001_dsr-10c764dded7d.align.json")
+    monkeypatch.delenv("XDG_DATA_HOME")
+    assert alignment.private_file("/a/b.zarr").startswith(os.path.join(os.path.expanduser("~"), ".local", "share", "chanalign"))
+
+
+def test_private_file_used_when_nothing_is_beside_the_data(store, xdg):
+    write_private(store, {**GOLDEN, "store": os.path.realpath(store)})
+    off, note = alignment.read_alignment(store, *ARGS)
+    assert off == {1: pytest.approx((-0.26, -0.15, 1.7))}
+    assert "private to you" in note and "phase_xcorr" in note and alignment.private_file(store) in note
+
+
+def test_beside_file_wins_over_the_private_one(store, xdg):
+    write(store, {**GOLDEN, "moving": [{"channel": 1, "label": "b", "shift_um": [1.0, 0.0, 0.0]}]})
+    write_private(store, {**GOLDEN, "store": os.path.realpath(store)})
+    off, note = alignment.read_alignment(store, *ARGS)
+    assert off == {1: pytest.approx((0.0, 0.0, 1.0))} and "private" not in note
+
+
+def test_private_file_for_another_store_is_ignored(store, xdg):
+    write_private(store, {**GOLDEN, "store": "/somewhere/else/cell_dsr.ome.zarr"})
+    off, note = alignment.read_alignment(store, *ARGS)
+    assert off == {} and "another store" in note and "ignored" in note
+
+
+def test_private_file_for_a_differently_shaped_store_is_ignored(store, xdg):
+    write_private(store, {**GOLDEN, "store": os.path.realpath(store), "shape_zyx": [9, 20, 18]})
+    off, note = alignment.read_alignment(store, *ARGS)
+    assert off == {} and "ignored" in note
+
+
+def test_no_private_file_is_still_no_note(store, xdg):
+    assert alignment.read_alignment(store, *ARGS) == ({}, None)

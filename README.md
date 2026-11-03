@@ -54,8 +54,9 @@ What you get:
   black) to the maximum (full brightness), computed once per channel from the first time
   point at the coarsest level and shared by all time points.
 - **Channel alignment**: a `<name>.align.json` saved by
-  [channelaligner](https://github.com/bscott711/channelaligner) in the store's own folder moves the channels it
-  lists: each channel's volume origin is shifted by its (z, y, x) micrometres, the store is not touched, and the log says
+  [channelaligner](https://github.com/bscott711/channelaligner) in the store's own folder (else the private copy channelaligner saves under
+  `~/.local/share/chanalign/alignments/` when that folder is not writable, used only if it was made for this store) moves
+  the channels it lists: each channel's volume origin is shifted by its (z, y, x) micrometres, the store is not touched, and the log says
   so. `open x.ome.zarr format ngff align false` (or `CHIMERAX_NGFF_ALIGN=0`) shows the data unshifted. A file made for a
   differently shaped store, or of another version, is ignored with a log line. `src/alignment.py`; the contract is in
   argus-desktop's `CONTRACT.md`.
@@ -123,7 +124,8 @@ ChimeraX reads, colours and uploads a time point the first time it is shown. For
   by looking straight down z. Our stores have the coverslip at the high-z end, so the first view
   is a three-quarter view with the coverslip slab at the bottom of the screen and the cell sitting
   on it: the same picture napari's "Open in napari" starts with (argus-desktop `napari_open.py`).
-  It is applied only when the store is the first thing opened in the session, and `view orient`
+  It is applied whenever nothing 3D is displayed yet (the first open, and again after `close`),
+  not when other 3D models are already shown, and `view orient`
   returns to the look-down-z view. napari draws the data mirrored left-right relative to ChimeraX's
   right-handed frame; a maximum-intensity projection is the same seen from either end, so the camera
   sits on the far side (a true rotation) and the pictures match. See `src/homeview.py`.

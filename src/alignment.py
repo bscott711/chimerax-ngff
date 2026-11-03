@@ -1,11 +1,14 @@
 """Channel alignment: the sidecar `<name>.align.json` written by channelaligner (bscott711/channelaligner, package chanalign).
 
 Pure Python (no ChimeraX import) so the portable tests run it. The contract is the same one argus-desktop's
-napari_open.py reads (argus-desktop/CONTRACT.md): the file sits next to `<name>.ome.zarr`, nowhere else.
+napari_open.py reads (argus-desktop/CONTRACT.md): the file sits next to `<name>.ome.zarr`. When the user could not save
+there, channelaligner wrote a per-user private file instead (`private_file`); it is read only when no file sits beside the
+data, and only when its `store` field names this store.
 `shift_um` is (z, y, x) micrometres ADDED to a channel's positions, which here moves the channel's volume origin. A file
 for a differently shaped store, or of another version, is ignored.
 """
 
+import hashlib
 import json
 import os
 
@@ -27,14 +30,24 @@ def sidecar_file(store_path):
     return os.path.join(os.path.dirname(real), _stem(real) + ".align.json")
 
 
+def private_file(store_path):
+    """The per-user file channelaligner saves to when the data folder is not writable (decision D01)."""
+    real = os.path.realpath(store_path)
+    base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    h = hashlib.sha256(real.encode()).hexdigest()[:12]
+    return os.path.join(base, "chanalign", "alignments", f"{_stem(real)}-{h}.align.json")
+
+
 def read_alignment(store_path, size_xyz, step_xyz, unit, n_channels):
     """({channel: (x, y, z) offset in the axes' own units}, note) for a store; ({}, note) when there is none to use.
 
     size_xyz and step_xyz are level 0's voxel counts and sizes, in x, y, z order as ChimeraX uses.
     """
-    path = sidecar_file(store_path)
+    path, private = sidecar_file(store_path), False
     if not os.path.isfile(path):
-        return {}, None
+        path, private = private_file(store_path), True
+        if not os.path.isfile(path):
+            return {}, None
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -42,6 +55,8 @@ def read_alignment(store_path, size_xyz, step_xyz, unit, n_channels):
         return {}, f"{path}: unreadable alignment file; ignored"
     if not isinstance(data, dict) or data.get("version") != VERSION:
         return {}, f"{path}: not an alignment file this version reads; ignored"
+    if private and data.get("store") != os.path.realpath(store_path):
+        return {}, f"{path}: private alignment for another store; ignored"
     shape, voxel = data.get("shape_zyx"), data.get("voxel_um")
     sx, sy, sz = step_xyz
     # The file's voxel_um is micrometres; compare in the store's own unit.
@@ -61,7 +76,8 @@ def read_alignment(store_path, size_xyz, step_xyz, unit, n_channels):
             return {}, f"{path}: unreadable shift; ignored"
         if 0 <= c < n_channels and (dx or dy or dz):
             offsets[c] = (dx / per_unit, dy / per_unit, dz / per_unit)
-    return offsets, f"channel alignment from {path} ({data.get('method', '?')})"
+    how = f"private to you, {data.get('method', '?')}" if private else data.get("method", "?")
+    return offsets, f"channel alignment from {path} ({how})"
 
 
 def apply_to_image(image, store_path, enabled=True):

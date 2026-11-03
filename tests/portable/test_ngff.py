@@ -328,6 +328,23 @@ def test_not_a_store(tmp_path):
         open_image(str(f))
 
 
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root can read everything")
+def test_unreadable_parent_is_permission_denied_not_missing(tmp_path):
+    locked = tmp_path / "theirs"
+    store = locked / "x.zarr"
+    group_v2(str(store), {"multiscales": multiscales(["0"], flat_scales(1), axes_04("tczyx"))})
+    locked.chmod(0o000)
+    try:
+        with pytest.raises(NGFFError, match="permission denied: you cannot read") as e:
+            open_image(str(store))
+        assert "no such folder" not in str(e.value)
+        assert str(store) in str(e.value) and "someone else's folder" in str(e.value)
+    finally:
+        locked.chmod(0o755)
+    with pytest.raises(NGFFError, match="no such folder"):  # truly missing still says so
+        open_image(str(locked / "missing.zarr"))
+
+
 def test_missing_level_array(tmp_path):
     root = str(tmp_path / "m.zarr")
     group_v2(root, {"multiscales": multiscales(["0"], flat_scales(1), axes_04("tczyx"))})
