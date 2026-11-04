@@ -174,3 +174,24 @@ def show_full_region(volumes):
         if tuple(d.choose_subsampling(step)[0]) == (1, 1, 1):
             continue  # would read full resolution at a coarse step: keep the plane
         v.new_region((0, 0, 0), full_max, step, adjust_step=False)
+        refresh_projection(v)
+
+
+def refresh_projection(volume):
+    """Make an image that was set up on a single plane use a 3-D texture now that the region is whole.
+
+    Image3d picks 2-D plane textures or one 3-D texture from the region it was given when it was
+    set up, and takes a new region or new options only when the volume updates its settings. A
+    volume that opened on the middle plane and was then widened therefore kept 2-D planes, which draw
+    a maximum-intensity projection about a tenth as bright as the 3-D texture does, until the first
+    edit of the levels (ChimeraX's volume command) updated its settings.
+    """
+    im = getattr(volume, "_image", None)
+    if im is None:
+        return  # not built yet: it will see the whole region
+    try:
+        im.update_settings()  # options and region, as the volume command does
+        im._remove_all_drawings()  # drawings made for the old texture kind
+        im.redraw_needed()
+    except AttributeError:
+        pass  # a ChimeraX whose image internals differ: the first edit of the levels still fixes it
