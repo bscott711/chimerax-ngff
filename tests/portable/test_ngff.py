@@ -64,7 +64,7 @@ def test_flat_store_04(tmp_path):
     assert im.subsample_levels() == [(1, (2, 2, 2)), (2, (4, 4, 4))]
     g, m = im.channels
     assert (g.label, g.rgba, g.window) == ("GFP 488", (0, 1, 0, 1), (0, 300))
-    assert m.rgba == pytest.approx((1, 0, 1, 128 / 255))
+    assert m.rgba == (1, 0, 1, 1)  # opym.display.normalize_color drops the alpha part
     np.testing.assert_array_equal(im.read_block(0, 2, 1, (0, 0, 0), (17, 20, 9), (1, 1, 1)),
                                   data[2, 1])
     np.testing.assert_array_equal(im.read_block(1, 0, 0, (0, 0, 0), (9, 10, 5), (1, 1, 1)),
@@ -290,7 +290,8 @@ def test_extra_axes(tmp_path):
 @pytest.mark.parametrize("nc, expected", [
     (1, [None]),
     (2, [(0, 1, 0, 1), (1, 0, 1, 1)]),
-    (5, [(0, 1, 0, 1), (1, 0, 1, 1), (0, 1, 1, 1), (1, 1, 0, 1), (1, 1, 1, 1)]),
+    # opym.display.CHANNEL_COLORS: green, magenta, 00B3FF, FFC400; past them gray
+    (5, [(0, 1, 0, 1), (1, 0, 1, 1), (0, 179 / 255, 1, 1), (1, 196 / 255, 0, 1), (1, 1, 1, 1)]),
 ])
 def test_default_channel_colors(tmp_path, nc, expected):
     data = tczyx((1, nc, 2, 3, 3))
@@ -301,8 +302,28 @@ def test_default_channel_colors(tmp_path, nc, expected):
 
 def test_parse_color():
     assert ngff.parse_color("FF00FF") == (1.0, 0.0, 1.0, 1.0)
-    assert ngff.parse_color("#00ff0080") == pytest.approx((0, 1, 0, 128 / 255))
+    assert ngff.parse_color("#00ff0080") == (0.0, 1.0, 0.0, 1.0)  # alpha part ignored
     assert ngff.parse_color("red") is None and ngff.parse_color(None) is None
+
+
+def test_parse_color_follows_opym_vectors():
+    from opym.display import color_rgb
+    from opym.testing.display import COLOR_CASES
+
+    for value, hex_color in COLOR_CASES:
+        got = ngff.parse_color(value)
+        if hex_color is None:
+            assert got is None, value
+        else:
+            assert got == (*color_rgb(hex_color), 1.0), value
+
+
+def test_legacy_red_store_shows_magenta(tmp_path):
+    data = tczyx((1, 2, 2, 3, 3))
+    root = str(tmp_path / "red.zarr")
+    omero = {"omero": {"channels": [{"color": "00FF00"}, {"color": "FF3D3D"}]}}
+    make_store(root, data, ["0"], flat_scales(1), omero)
+    assert [c.rgba for c in open_image(root).channels] == [(0, 1, 0, 1), (1, 0, 1, 1)]
 
 
 @pytest.mark.parametrize("attrs, match", [
@@ -368,7 +389,7 @@ def test_omero_channel_count_mismatch_warns(tmp_path):
     make_store(root, data, ["0"], flat_scales(1), OMERO)
     im = open_image(root)
     assert any("omero lists 2" in w for w in im.warnings)
-    assert im.channels[2].rgba == (0, 1, 1, 1) and im.channels[2].label is None
+    assert im.channels[2].rgba == (0, 179 / 255, 1, 1) and im.channels[2].label is None
 
 
 def test_reading_does_not_modify_the_store(tmp_path):
@@ -391,39 +412,63 @@ def test_reading_does_not_modify_the_store(tmp_path):
 
 
 def test_display_shift_leaves_about_120_levels():
-    assert ngff.display_shift(100) == 0  # already fits: shown as stored
-    assert ngff.display_shift(239) == 0
-    assert ngff.display_shift(240) == 1
-    assert ngff.display_shift(1064) == 3  # 133 levels
-    assert ngff.display_shift(65535) == 9
+    from opym.display import display_shift
+    from opym.testing.display import LINEAR_SHIFT_CASES
+
+    for top, shift in LINEAR_SHIFT_CASES:
+        assert display_shift(top) == shift, top
     for top in (7, 130, 500, 1064, 9000, 65535):
-        sh = ngff.display_shift(top)
+        sh = display_shift(top)
         assert top / 2**sh >= min(top, 120) and top / 2**sh < 240 or sh == 0
 
 
-def test_to_uint8_is_shift_and_clip():
+def test_to_8bit_linear_is_shift_and_clip():
     from concurrent.futures import ThreadPoolExecutor
+
+    from opym.display import to_8bit_linear
 
     rng = np.random.default_rng(3)
     m = rng.integers(0, 65536, (50, 20, 30)).astype("u2")
     for shift in (0, 3, 9):
         ref = np.minimum(m >> shift, 255).astype("u1")
-        np.testing.assert_array_equal(ngff.to_uint8(m, shift), ref)
+        np.testing.assert_array_equal(to_8bit_linear(m, shift), ref)
         with ThreadPoolExecutor(4) as pool:
-            np.testing.assert_array_equal(ngff.to_uint8(m, shift, pool), ref)
-    assert ngff.to_uint8(m, 2).dtype == np.uint8
+            np.testing.assert_array_equal(to_8bit_linear(m, shift, pool), ref)
+    assert to_8bit_linear(m, 2).dtype == np.uint8
 
 
-def test_to_uint8_does_not_touch_the_source():
+def test_to_8bit_linear_does_not_touch_the_source():
+    from opym.display import to_8bit_linear
+
     m = np.arange(2 * 3 * 4, dtype="u2").reshape(2, 3, 4) * 100
     before = m.copy()
-    ngff.to_uint8(m, 0)
-    ngff.to_uint8(m, 2)
+    to_8bit_linear(m, 0)
+    to_8bit_linear(m, 2)
     np.testing.assert_array_equal(m, before)
 
 
 def test_eight_bit_ok_only_for_unsigned_16():
-    assert ngff.eight_bit_ok(np.dtype("u2"))
-    assert not ngff.eight_bit_ok(np.dtype("u1"))
-    assert not ngff.eight_bit_ok(np.dtype("i2"))
-    assert not ngff.eight_bit_ok(np.dtype("f4"))
+    from opym.display import eight_bit_ok
+
+    assert eight_bit_ok(np.dtype("u2"))
+    assert not eight_bit_ok(np.dtype("u1"))
+    assert not eight_bit_ok(np.dtype("i2"))
+    assert not eight_bit_ok(np.dtype("f4"))
+
+
+def test_opym_golden_store_opens(tmp_path):
+    """The store opym itself writes opens with its labels, palette colours and grid."""
+    from opym.testing import store as golden
+
+    zarr = pytest.importorskip("zarr")  # opym's writer is zarr-python 2 and imports it lazily
+    if int(zarr.__version__.split(".")[0]) >= 3:
+        pytest.skip("opym's store writer needs zarr-python 2")
+    path = golden.write_golden_store(root=tmp_path)
+    im = open_image(str(path))
+    assert (im.nt, im.nc) == (golden.GOLDEN_N_T, golden.GOLDEN_N_C)
+    assert [c.label for c in im.channels] == list(golden.GOLDEN_LABELS)
+    assert [c.rgba[:3] for c in im.channels][0] == (0, 1, 0)
+    assert im.channels[1].rgba == (1, 0, 1, 1)
+    assert im.level_size(0)[::-1] == golden.GOLDEN_SHAPE_ZYX
+    np.testing.assert_array_equal(im.read_block(0, 1, 1, (0, 0, 0), (16, 16, 8), (1, 1, 1)),
+                                  golden.golden_volume(1, 1))

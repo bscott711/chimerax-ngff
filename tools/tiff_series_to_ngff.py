@@ -18,6 +18,8 @@ TIFFs carry no voxel size. Give it with --xy-um / --z-um, or leave both out: the
 has unit-less spatial axes with scale 1 (voxel units) and the numbers can be filled in later
 by editing the three `scale` entries in .zattrs; the pixel data do not change.
 
+Not an opym-compatible writer (opym's is `opym.ome_zarr_writer`): colours and layout here are its own.
+
 Needs numpy, tifffile, zarr < 3 and numcodecs (the bioimaging venv has them).
 
     tiff_series_to_ngff.py SRC_DIR OUT.ome.zarr [--xy-um 0.104 --z-um 0.2] [--wavelengths 488 560]

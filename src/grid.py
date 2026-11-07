@@ -4,8 +4,8 @@ import math
 
 import numpy as np
 from chimerax.map_data import GridData
+from opym.display import display_shift, eight_bit_ok, to_8bit_linear
 
-from .ngff import display_shift, eight_bit_ok, to_uint8
 from .store import _BACKGROUND_POOL, _POOL
 
 
@@ -29,7 +29,7 @@ class NGFFGrid(GridData):
 
     def read_matrix(self, ijk_origin, ijk_size, ijk_step, progress):
         m = self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step)
-        return m if self.shift is None else to_uint8(m, self.shift, _POOL)
+        return m if self.shift is None else to_8bit_linear(m, self.shift, _POOL)
 
     def read_ahead(self, ijk_origin, ijk_size, ijk_step):
         """(matrix, any_data) for the prefetcher, read on its own threads.
@@ -43,7 +43,7 @@ class NGFFGrid(GridData):
         m = self.image.read_block(self.level, self.t, self.c, ijk_origin, ijk_size, ijk_step,
                                   background=True, report=report)
         if self.shift is not None:
-            m = to_uint8(m, self.shift, _BACKGROUND_POOL)
+            m = to_8bit_linear(m, self.shift, _BACKGROUND_POOL)
         return m, report.get("missing", 0) < report.get("chunks", 1)
 
 

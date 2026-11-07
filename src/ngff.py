@@ -21,6 +21,7 @@ import posixpath
 import stat
 
 import numpy as np
+from opym.display import CHANNEL_COLORS, color_rgb, normalize_color
 
 from .store import ZarrArray, ZarrError, cast_fill, node_info, read_attributes
 
@@ -29,10 +30,8 @@ class NGFFError(ValueError):
     """The path is not an OME-Zarr image this reader can open."""
 
 
-# Channel colours without OMERO metadata, by channel index (lab rule: channel 2 is
-# magenta, never red/green). Channels past the list are gray.
-DEFAULT_COLORS = ((0.0, 1.0, 0.0, 1.0), (1.0, 0.0, 1.0, 1.0), (0.0, 1.0, 1.0, 1.0),
-                  (1.0, 1.0, 0.0, 1.0))
+# Channel colours come from opym.display (CHANNEL_COLORS: green, magenta, blue, amber; channel
+# 2 is never red; a store's legacy red FF3D3D shows as magenta). Channels past the palette are gray.
 GRAY = (1.0, 1.0, 1.0, 1.0)
 
 _TYPE_FROM_NAME = {"t": "time", "time": "time", "c": "channel", "channel": "channel",
@@ -243,53 +242,6 @@ class Image:
         return view.transpose(np.argsort(cur + others))
 
 
-# Grey levels kept below the top of a channel's display range when 16-bit data is shown as
-# 8-bit (naparym-live uses the same rule; side by side, 121-138 levels looked identical).
-DISPLAY_LEVELS = 120
-
-
-def display_shift(top, levels=DISPLAY_LEVELS):
-    """Right shift that leaves `levels` grey levels below `top`: floor(log2(top / levels)), >= 0.
-
-    top is the upper end of the display range (the maximum of time point 0). The shift is
-    fixed for a channel so intensities stay comparable across time points.
-    """
-    shift = 0
-    while top / 2 ** (shift + 1) >= levels:
-        shift += 1
-    return shift
-
-
-def to_uint8(m, shift, pool=None):
-    """uint8 copy of an unsigned 16-bit block: m >> shift, values over 255 clipped to 255.
-
-    The work is split over z slabs on `pool` (numpy releases the GIL on slabs this big), so a
-    full-resolution block takes tens of milliseconds instead of a few tenths of a second.
-    """
-    import numpy as np
-
-    out = np.empty(m.shape, np.uint8)
-
-    def one(sl):
-        part = m[sl] >> shift if shift else m[sl].copy()
-        np.minimum(part, 255, out=part)
-        out[sl] = part
-
-    n = m.shape[0]
-    slabs = [slice(i, min(i + 16, n)) for i in range(0, n, 16)]
-    if pool is None or len(slabs) == 1:
-        for sl in slabs:
-            one(sl)
-    else:
-        list(pool.map(one, slabs))
-    return out
-
-
-def eight_bit_ok(dtype):
-    """Whether a stored type is shown as 8-bit on request: unsigned 16-bit integers."""
-    return dtype.kind == "u" and dtype.itemsize == 2
-
-
 def chimerax_value_type(dtype):
     """Native dtype ChimeraX can display for a stored dtype.
 
@@ -494,19 +446,12 @@ def _scale_translation(transforms, ndim, where):
 
 
 def parse_color(value):
-    """(r, g, b, a) floats from an OMERO "RRGGBB" or "RRGGBBAA" hex string, else None."""
-    if not isinstance(value, str):
-        return None
-    h = value.strip().lstrip("#")
-    if len(h) not in (6, 8):
-        return None
-    try:
-        parts = [int(h[i:i + 2], 16) / 255.0 for i in range(0, len(h), 2)]
-    except ValueError:
-        return None
-    if len(parts) == 3:
-        parts.append(1.0)
-    return tuple(parts)
+    """(r, g, b, a) floats from an OMERO colour, else None (opym.display.normalize_color).
+
+    The legacy red FF3D3D comes back as magenta; any alpha part of the string is ignored (a = 1).
+    """
+    hex_color = normalize_color(value)
+    return None if hex_color is None else (*color_rgb(hex_color), 1.0)
 
 
 def _channels(attrs, nc, warnings):
@@ -520,7 +465,7 @@ def _channels(attrs, nc, warnings):
         e = entries[c] if c < len(entries) and isinstance(entries[c], dict) else {}
         rgba = parse_color(e.get("color"))
         if rgba is None and nc > 1:
-            rgba = DEFAULT_COLORS[c] if c < len(DEFAULT_COLORS) else GRAY
+            rgba = (*color_rgb(CHANNEL_COLORS[c]), 1.0) if c < len(CHANNEL_COLORS) else GRAY
         window = None
         w = e.get("window")
         if isinstance(w, dict) and w.get("start") is not None and w.get("end") is not None:
