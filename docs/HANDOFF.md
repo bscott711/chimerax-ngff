@@ -242,3 +242,14 @@ overwritten). Applied only when the session had no models (`session.models._init
 - Opt out: `open x.zarr homeview false`, `CHIMERAX_NGFF_HOME_VIEW=0`. `view orient` returns to z.
 - Checked: Cell_001_002 stills of napari (Xvfb, software GL) and ChimeraX match; other model open
   first leaves the camera alone; nogui open unaffected; portable tests 163 pass (4 new).
+
+### opym contracts (2026-11-06)
+
+The channel palette (default colours, the legacy red `FF3D3D` shown as magenta) and the linear
+8-bit rule (`display_shift`, `to_8bit_linear`, `eight_bit_ok`, 120 grey levels) are no longer
+copied here: `ngff.py` and `grid.py` import them from `opym.display`, pinned by commit in
+`pyproject.toml`. ChimeraX stays linear by design (no decode stage for sqrt codes). Behaviour
+changes: default colours for channels 3 and 4 are `00B3FF` and `FFC400` (were cyan and yellow);
+stores naming `FF3D3D` show magenta; an alpha part of an OMERO colour is ignored. opym must be
+installed into the shared ChimeraX with `--no-deps` on every deploy (README, Install), because
+`toolshed install ... reinstall true` skips dependencies. ChimeraX's python ignores `PYTHONPATH`.
