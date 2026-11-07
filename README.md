@@ -6,7 +6,7 @@ The bundle is pure Python. It reads zarr with the numpy and imagecodecs that Chi
 already ships, and imports its display contracts from [opym](https://github.com/bscott711/opym)
 (`opym.display`: the channel palette with the legacy red remapped to magenta, and the linear 8-bit
 rule), pinned by commit. opym's base install needs only numpy, so it is installed with `--no-deps`
-and cannot shadow or upgrade ChimeraX's own packages. It needs ChimeraX 1.8 or later (Python 3.10 or
+and cannot shadow or upgrade ChimeraX's own packages. It needs ChimeraX 1.7 or later (Python 3.10 or
 later) and is tested on ChimeraX 1.12 (Python 3.11, numpy 1.26.4, imagecodecs 2024.6.1).
 
 ## Install
@@ -16,7 +16,7 @@ ChimeraX keeps its numpy 1.26.4; `toolshed install ... reinstall true` also pass
 this step is needed on every deploy:
 
 ```
-chimerax -m pip install --no-deps "opym @ git+https://github.com/bscott711/opym@059220a081b3bdb659e08191e10e68f0111650b6"
+chimerax -m pip install --no-deps "opym @ git+https://github.com/bscott711/opym@67372ecce0a1caf431764361f87e0c9b2adda551"
 ```
 
 To bump the pin, change the commit here and in `pyproject.toml` (`dependencies`) together, then
@@ -185,10 +185,10 @@ Known limitation: ChimeraX sessions save NGFF volumes but cannot restore them ye
 
 ```
 # portable tests (no ChimeraX); zarr-python is only a test-time fixture writer;
-# OPYM is the pinned requirement from pyproject.toml
-OPYM="opym @ git+https://github.com/bscott711/opym@059220a081b3bdb659e08191e10e68f0111650b6"
+# OPYM is the pinned requirement from pyproject.toml; ome-types is what opym's store writer (golden store test) needs
+OPYM="opym @ git+https://github.com/bscott711/opym@67372ecce0a1caf431764361f87e0c9b2adda551"
 uv run --no-project --with pytest --with numpy --with imagecodecs --with "$OPYM" --with 'zarr>=3' pytest tests/portable
-uv run --no-project --with pytest --with numpy --with imagecodecs --with "$OPYM" --with 'zarr<3' --with 'numcodecs<0.16' pytest tests/portable
+uv run --no-project --with pytest --with numpy --with imagecodecs --with "$OPYM" --with 'zarr<3' --with 'numcodecs<0.16' --with ome-types pytest tests/portable
 
 # optional: bit-exact reads of the lab's real stores (paths in the test file)
 NGFF_REAL_STORES=1 uv run --no-project --with pytest --with numpy --with imagecodecs --with 'zarr>=3' pytest tests/portable/test_real_stores.py

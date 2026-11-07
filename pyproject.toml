@@ -13,10 +13,10 @@ requires-python = ">=3.10"
 # ChimeraX itself plus opym, which supplies the display palette and the linear 8-bit rule. opym's
 # base install needs only numpy, so ChimeraX keeps its own numpy and imagecodecs (install opym with
 # --no-deps, see the README). The reader still uses only ChimeraX's numpy and imagecodecs for zarr.
-# ChimeraX-Core 1.8 is the first with Python 3.10 or later (opym needs >= 3.10).
+# ChimeraX-Core 1.7 is the first with Python 3.10 or later (1.7 ships Python 3.11; 1.6.x ships 3.9; opym needs >= 3.10).
 dependencies = [
-    "ChimeraX-Core >=1.8",
-    "opym @ git+https://github.com/bscott711/opym@059220a081b3bdb659e08191e10e68f0111650b6",
+    "ChimeraX-Core >=1.7",
+    "opym @ git+https://github.com/bscott711/opym@67372ecce0a1caf431764361f87e0c9b2adda551",
 ]
 dynamic = ["classifiers"]
 
