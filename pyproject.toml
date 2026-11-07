@@ -9,9 +9,15 @@ description = "Open OME-Zarr (OME-NGFF) images in ChimeraX, using only ChimeraX'
 license = { text = "MIT" }
 authors = [{ name = "bscott711" }]
 readme = "README.md"
-requires-python = ">=3.9"
-# Only ChimeraX itself: the reader uses the numpy and imagecodecs ChimeraX ships.
-dependencies = ["ChimeraX-Core >=1.6"]
+requires-python = ">=3.10"
+# ChimeraX itself plus opym, which supplies the display palette and the linear 8-bit rule. opym's
+# base install needs only numpy, so ChimeraX keeps its own numpy and imagecodecs (install opym with
+# --no-deps, see the README). The reader still uses only ChimeraX's numpy and imagecodecs for zarr.
+# ChimeraX-Core 1.8 is the first with Python 3.10 or later (opym needs >= 3.10).
+dependencies = [
+    "ChimeraX-Core >=1.8",
+    "opym @ git+https://github.com/bscott711/opym@059220a081b3bdb659e08191e10e68f0111650b6",
+]
 dynamic = ["classifiers"]
 
 [project.urls]
@@ -40,7 +46,7 @@ open = { want-path = true, check-path = false }
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

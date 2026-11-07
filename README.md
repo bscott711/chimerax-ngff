@@ -2,12 +2,25 @@
 
 Open OME-Zarr (OME-NGFF) images in [UCSF ChimeraX](https://www.cgl.ucsf.edu/chimerax/).
 
-The bundle is pure Python with **no pip dependencies**: it reads zarr with the numpy and
-imagecodecs that ChimeraX already ships, so installing it cannot shadow or upgrade
-ChimeraX's own packages. It needs ChimeraX 1.6 or later and is tested on ChimeraX 1.12
-(Python 3.11, numpy 1.26.4, imagecodecs 2024.6.1).
+The bundle is pure Python. It reads zarr with the numpy and imagecodecs that ChimeraX
+already ships, and imports its display contracts from [opym](https://github.com/bscott711/opym)
+(`opym.display`: the channel palette with the legacy red remapped to magenta, and the linear 8-bit
+rule), pinned by commit. opym's base install needs only numpy, so it is installed with `--no-deps`
+and cannot shadow or upgrade ChimeraX's own packages. It needs ChimeraX 1.8 or later (Python 3.10 or
+later) and is tested on ChimeraX 1.12 (Python 3.11, numpy 1.26.4, imagecodecs 2024.6.1).
 
 ## Install
+
+Install opym first (before or with the bundle), with the ChimeraX's own pip and `--no-deps` so
+ChimeraX keeps its numpy 1.26.4; `toolshed install ... reinstall true` also passes `--no-deps`, so
+this step is needed on every deploy:
+
+```
+chimerax -m pip install --no-deps "opym @ git+https://github.com/bscott711/opym@059220a081b3bdb659e08191e10e68f0111650b6"
+```
+
+To bump the pin, change the commit here and in `pyproject.toml` (`dependencies`) together, then
+run the portable tests with `--with "opym @ git+https://github.com/bscott711/opym@<sha>"`.
 
 From a wheel (GitHub release or `dist/` after a build):
 
@@ -17,8 +30,8 @@ chimerax --nogui --exit --cmd "toolshed install /path/to/chimerax_ngff-0.4.1-py3
 
 or type `toolshed install /path/to/chimerax_ngff-0.4.1-py3-none-any.whl` in the ChimeraX
 command line. Add `user false` to install for every user of a shared ChimeraX (needs
-write access to its site-packages). Once the bundle is on the ChimeraX Toolshed,
-`toolshed install ChimeraX-NGFF` works too.
+write access to its site-packages). The opym dependency is a git URL, which the ChimeraX
+Toolshed's package index does not accept, so the bundle is installed from a wheel, not from the Toolshed.
 
 From source: `chimerax --nogui --exit --cmd "devel install /path/to/chimerax-ngff user true"`.
 
@@ -40,8 +53,10 @@ What you get:
 
 - **Time points** become a volume series (slider, `vseries` commands) and **channels**
   separate coloured volumes (a multi-channel series when there are both).
-- **Colours** come from the OMERO metadata; without it channels are green, magenta,
-  cyan, yellow, then gray (a single channel keeps ChimeraX's default colour).
+- **Colours** come from the OMERO metadata (`opym.display.normalize_color`: the legacy red
+  `FF3D3D` of stores written before 2026-09-26 shows as magenta, and an alpha part is ignored);
+  without it channels get opym's palette (green, magenta, `00B3FF`, `FFC400`), then gray (a
+  single channel keeps ChimeraX's default colour).
 - **Resolution levels**: ChimeraX reads a coarser level whenever it shows the data at a
   coarser step, so a 57 GB time series opens in a fraction of a second. Large images
   open showing the whole volume at the coarsest step that fits ChimeraX's voxel limit
@@ -112,8 +127,10 @@ ChimeraX reads, colours and uploads a time point the first time it is shown. For
 - **8-bit display** (the default; `open x.zarr bits 16` or `CHIMERAX_NGFF_DISPLAY_BITS=16` opts out). Unsigned 16-bit
   data is shown as `value >> shift`, clipped to 255, with one shift per channel fixed
   from time point 0 so intensities stay comparable across time (the largest shift that
-  leaves 120 grey levels below the top of the ramp, as naparym-live does; 0 for data that
-  already fits). Half the memory (a whole 150-time-point full-resolution series is 132 GB
+  leaves 120 grey levels below the top of the ramp; 0 for data that
+  already fits). This is opym's linear 8-bit rule (`opym.display.to_8bit_linear`), kept linear on
+  purpose: ChimeraX has no decode stage, so the sqrt codes of the other viewers would show
+  non-linearly here. Half the memory (a whole 150-time-point full-resolution series is 132 GB
   instead of 264 GB, so it fits in RAM) and half the bytes to the GPU (twice as many time
   points stay resident, uploads take half as long). Image levels, the histogram and
   thresholds are then in those units (the log line says the divisor per channel); the
@@ -167,9 +184,11 @@ Known limitation: ChimeraX sessions save NGFF volumes but cannot restore them ye
 ## Development
 
 ```
-# portable tests (no ChimeraX); zarr-python is only a test-time fixture writer
-uv run --no-project --with pytest --with numpy --with imagecodecs --with 'zarr>=3' pytest tests/portable
-uv run --no-project --with pytest --with numpy --with imagecodecs --with 'zarr<3' --with 'numcodecs<0.16' pytest tests/portable
+# portable tests (no ChimeraX); zarr-python is only a test-time fixture writer;
+# OPYM is the pinned requirement from pyproject.toml
+OPYM="opym @ git+https://github.com/bscott711/opym@059220a081b3bdb659e08191e10e68f0111650b6"
+uv run --no-project --with pytest --with numpy --with imagecodecs --with "$OPYM" --with 'zarr>=3' pytest tests/portable
+uv run --no-project --with pytest --with numpy --with imagecodecs --with "$OPYM" --with 'zarr<3' --with 'numcodecs<0.16' pytest tests/portable
 
 # optional: bit-exact reads of the lab's real stores (paths in the test file)
 NGFF_REAL_STORES=1 uv run --no-project --with pytest --with numpy --with imagecodecs --with 'zarr>=3' pytest tests/portable/test_real_stores.py
