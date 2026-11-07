@@ -11,13 +11,18 @@ later) and is tested on ChimeraX 1.12 (Python 3.11, numpy 1.26.4, imagecodecs 20
 
 ## Install
 
-Install opym first (before or with the bundle), with the ChimeraX's own pip and `--no-deps` so
+Install opym first (before or with the bundle), into the ChimeraX's own python with `--no-deps` so
 ChimeraX keeps its numpy 1.26.4; `toolshed install ... reinstall true` also passes `--no-deps`, so
-this step is needed on every deploy:
+this step is needed on every deploy. ChimeraX's own pip cannot build opym from the git URL (build isolation
+fails with `Cannot import 'hatchling.build'`), so build a wheel of the pinned commit outside ChimeraX and install the wheel:
 
 ```
-chimerax -m pip install --no-deps "opym @ git+https://github.com/bscott711/opym@b9189d2419c47f0736b188307f4a76f08002cd65"
+git clone https://github.com/bscott711/opym && git -C opym checkout b9189d2419c47f0736b188307f4a76f08002cd65
+uv build --wheel -o dist-opym opym
+chimerax -m pip install --no-deps --no-index --force-reinstall dist-opym/opym-*.whl
 ```
+
+(cell-cinema's `./deploy` does exactly this and records the installed commit.)
 
 To bump the pin, change the commit here and in `pyproject.toml` (`dependencies`) together
 (cell-cinema's `pyproject.toml` pin must move with it), then
