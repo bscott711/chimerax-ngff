@@ -22,6 +22,7 @@ import stat
 
 import numpy as np
 from opym.display import CHANNEL_COLORS, color_rgb, normalize_color
+from opym.store import LAYOUT_KEY
 
 from .store import ZarrArray, ZarrError, cast_fill, node_info, read_attributes
 
@@ -287,14 +288,14 @@ def open_image(path, series=None):
             return _series_image(root, attrs, str(series))
         if "multiscales" in attrs:
             return _image_from_group(root, "", None)
-        if "bioformats2raw.layout" in attrs:
+        if LAYOUT_KEY in attrs:
             names = bioformats2raw_series(root)
             return _image_from_group(root, names[0], names[0])
         if "plate" in attrs or "well" in attrs:
             raise NGFFError(f"{root}: is an HCS plate/well; open one image group inside it "
                             "(HCS is not supported in this version)")
         raise NGFFError(f"{root}: no OME-NGFF image here (no multiscales, "
-                        "bioformats2raw.layout or array)")
+                        f"{LAYOUT_KEY} or array)")
     except ZarrError as e:
         raise NGFFError(str(e)) from None
 
@@ -321,7 +322,7 @@ def _series_image(root, attrs, series):
     gpath = os.path.join(root, *rel.split("/"))
     _, kind, _ = node_info(gpath) if os.path.isdir(gpath) else (None, None, None)
     if kind != "group":
-        if "bioformats2raw.layout" in attrs:
+        if LAYOUT_KEY in attrs:
             avail = ", ".join(bioformats2raw_series(root))
             raise NGFFError(f"{root}: no series {series!r} (series: {avail})")
         raise NGFFError(f"{root}: no group {series!r} to open as a series")

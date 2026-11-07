@@ -5,7 +5,7 @@ Open OME-Zarr (OME-NGFF) images in [UCSF ChimeraX](https://www.cgl.ucsf.edu/chim
 The bundle is pure Python. It reads zarr with the numpy and imagecodecs that ChimeraX
 already ships, and imports its display contracts from [opym](https://github.com/bscott711/opym)
 (`opym.display`: the channel palette with the legacy red remapped to magenta, and the linear 8-bit
-rule), pinned by commit. opym's base install needs only numpy, so it is installed with `--no-deps`
+rule; `opym.store`: the processed-store layout key), pinned by commit. opym's base install needs only numpy, so it is installed with `--no-deps`
 and cannot shadow or upgrade ChimeraX's own packages. It needs ChimeraX 1.7 or later (Python 3.10 or
 later) and is tested on ChimeraX 1.12 (Python 3.11, numpy 1.26.4, imagecodecs 2024.6.1).
 
@@ -16,10 +16,11 @@ ChimeraX keeps its numpy 1.26.4; `toolshed install ... reinstall true` also pass
 this step is needed on every deploy:
 
 ```
-chimerax -m pip install --no-deps "opym @ git+https://github.com/bscott711/opym@67372ecce0a1caf431764361f87e0c9b2adda551"
+chimerax -m pip install --no-deps "opym @ git+https://github.com/bscott711/opym@b9189d2419c47f0736b188307f4a76f08002cd65"
 ```
 
-To bump the pin, change the commit here and in `pyproject.toml` (`dependencies`) together, then
+To bump the pin, change the commit here and in `pyproject.toml` (`dependencies`) together
+(cell-cinema's `pyproject.toml` pin must move with it), then
 run the portable tests with `--with "opym @ git+https://github.com/bscott711/opym@<sha>"`.
 
 From a wheel (GitHub release or `dist/` after a build):
@@ -186,7 +187,7 @@ Known limitation: ChimeraX sessions save NGFF volumes but cannot restore them ye
 ```
 # portable tests (no ChimeraX); zarr-python is only a test-time fixture writer;
 # OPYM is the pinned requirement from pyproject.toml; ome-types is what opym's store writer (golden store test) needs
-OPYM="opym @ git+https://github.com/bscott711/opym@67372ecce0a1caf431764361f87e0c9b2adda551"
+OPYM="opym @ git+https://github.com/bscott711/opym@b9189d2419c47f0736b188307f4a76f08002cd65"
 uv run --no-project --with pytest --with numpy --with imagecodecs --with "$OPYM" --with 'zarr>=3' pytest tests/portable
 uv run --no-project --with pytest --with numpy --with imagecodecs --with "$OPYM" --with 'zarr<3' --with 'numcodecs<0.16' --with ome-types pytest tests/portable
 
